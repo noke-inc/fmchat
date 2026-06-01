@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: noke-mcp-config
+  namespace: noke-mcp
+data:
+  DB_HOST:              "noke-mysql-cluster.cluster-cmftlirsxmms.us-east-2.rds.amazonaws.com"
+  DB_PORT:              "3306"
+  DB_USER:              "pradesh_kumar"
+  DB_SCHEMA:            "smartentry-main"
+  USERS_ACTIVE_COL:     "state"
+  USERS_ACTIVE_VALUE:   "active"
+  USERS_ROLES_SITE_COL: "site_id"
+  MCP_BASE_URL:         "https://mcp.smartentry.noke.dev"
+  BACKEND_BASE_URL:     "https://router.smartentry.noke.dev"

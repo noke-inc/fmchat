@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noke-mcp
+  namespace: noke-mcp
+  labels:
+    app: noke-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noke-mcp
+  template:
+    metadata:
+      labels:
+        app: noke-mcp
+    spec:
+      containers:
+        - name: noke-mcp
+          image: 440124919638.dkr.ecr.us-east-2.amazonaws.com/noke-fm-mcp-server:v1.0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: noke-mcp-config
+            - secretRef:
+                name: noke-mcp-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu:    "100m"
+              memory: "256Mi"
+            limits:
+              cpu:    "500m"
+              memory: "512Mi"
