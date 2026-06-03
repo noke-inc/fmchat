@@ -53,12 +53,21 @@ def validate_noke_token(token: str) -> dict:
 
     header_b64, payload_b64, received_sig = parts
 
-    # Recompute signature — constant-time hex comparison via == is safe for hex strings
-    expected_sig = hashlib.sha256(
+    # The Go JWT library (golang-jwt/jwt) calls Sign() → returns []byte(hex_digest),
+    # then base64url-encodes those bytes as the JWT third part.
+    # Verify() receives the base64url-decoded bytes and does string(signature) == hex_digest.
+    # So: JWT third part = base64url( hex_digest_string_bytes )
+    # We must decode received_sig from base64url to recover the raw hex string before comparing.
+    try:
+        received_hex = _b64_decode(received_sig).decode("utf-8")
+    except Exception:
+        raise PermissionError("Token signature could not be decoded.")
+
+    expected_hex = hashlib.sha256(
         (header_b64 + "." + payload_b64 + NOKE_SECRET).encode("utf-8")
     ).hexdigest()
 
-    if expected_sig != received_sig:
+    if expected_hex != received_hex:
         raise PermissionError("Token signature is invalid.")
 
     try:

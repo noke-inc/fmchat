@@ -14,7 +14,7 @@
 #   aws ecr create-repository --repository-name noke-fm-mcp-server --region us-east-2
 
 param(
-    [string]$Tag = "v1.0.1"
+    [string]$Tag = "v1.0.4"
 )
 
 Set-StrictMode -Version Latest

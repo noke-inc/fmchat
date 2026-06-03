@@ -1,29 +1,94 @@
-from fastapi import FastAPI, HTTPException, Header
+"""
+mcp_server/main.py
+
+FastAPI application entry point.
+
+Endpoints
+─────────
+GET  /health                   liveness probe
+GET  /mcp                      MCP SSE endpoint — LangChain agent discovers tools here
+POST /agent/chat               LangChain + Bedrock agent (new chat entry point)
+POST /api/query                Direct MCP tool call (JWT + API-key protected, for testing)
+GET  /                         Serves ui/index.html
+"""
+
+import logging
+import os
+from pathlib import Path
+
+import uvicorn
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastmcp import FastMCP
 from pydantic import BaseModel, Field
-from pathlib import Path
-import os
-import uvicorn
 
+from agent.routes import router as agent_router
 from mcp_server.auth.noke_jwt import validate_noke_token
-from mcp_server.auth.oidc import router as oidc_router
-from mcp_server.auth.oauth import router as oauth_router
-from mcp_server.chat import router as chat_router
-from mcp_server.config import MCP_API_KEY
+from mcp_server.config import (
+    AGENT_AUTH_ENABLED,
+    AGENT_MCP_URL,
+    BEDROCK_MODEL_ID,
+    BEDROCK_REGION,
+    MCP_API_KEY,
+)
 from mcp_server.tools import (
-    tool_get_units,
+    tool_describe_table,
     tool_get_locks,
     tool_get_locks_to_units,
-    tool_describe_table,
+    tool_get_units,
 )
 
-UI_FILE = Path(__file__).parent.parent / "index.html"
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.DEBUG if os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG" else logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
+# ── MCP server (fastmcp) ──────────────────────────────────────────────────────
+# Registers DB tools so LangChain can discover and call them via SSE at GET /mcp
+mcp = FastMCP("Noke Smart Entry MCP")
+
+
+@mcp.tool()
+def get_units(user_id: int, limit: int = 100) -> list[dict]:
+    """Return storage units scoped to the sites assigned to this user."""
+    logger.debug("MCP tool: get_units user_id=%s limit=%s", user_id, limit)
+    return tool_get_units(user_id=user_id, limit=limit)
+
+
+@mcp.tool()
+def get_locks(user_id: int, limit: int = 100) -> list[dict]:
+    """Return locks scoped to the sites assigned to this user."""
+    logger.debug("MCP tool: get_locks user_id=%s limit=%s", user_id, limit)
+    return tool_get_locks(user_id=user_id, limit=limit)
+
+
+@mcp.tool()
+def get_locks_to_units(user_id: int, limit: int = 100) -> list[dict]:
+    """Return lock-to-unit assignments scoped to the sites assigned to this user."""
+    logger.debug("MCP tool: get_locks_to_units user_id=%s limit=%s", user_id, limit)
+    return tool_get_locks_to_units(user_id=user_id, limit=limit)
+
+
+@mcp.tool()
+def describe_table(table: str) -> list[dict]:
+    """Return column metadata for the given table name."""
+    logger.debug("MCP tool: describe_table table=%s", table)
+    return tool_describe_table(table)
+
+
+# ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="Noke Smart Entry MCP Server",
-    description="Read-only MCP server — NOKE JWT authorization, per-user site scoping.",
-    version="0.3.0",
+    title="Noke Smart Entry — Agent + MCP Server",
+    description=(
+        "LangChain/Bedrock agent server with MCP SSE tool endpoint. "
+        "AGENT_AUTH_ENABLED=false skips JWT validation (current phase)."
+    ),
+    version="1.0.0",
 )
 
 app.add_middleware(
@@ -33,11 +98,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Sub-routers ───────────────────────────────────────────────────────────────
-app.include_router(oidc_router)    # auth: /.well-known/openid-configuration, /.well-known/jwks.json
-app.include_router(oauth_router)   # auth: /mcp/oauth/authorize, /mcp/oauth/token
-app.include_router(chat_router)    # mcp:  /api/ai/chat
+# POST /agent/chat
+app.include_router(agent_router)
 
+# GET /mcp  (SSE — LangChain MultiServerMCPClient connects here)
+app.mount("/mcp", mcp.sse_app())
+
+logger.info(
+    "Server config: model=%s region=%s auth_enabled=%s agent_mcp_url=%s",
+    BEDROCK_MODEL_ID, BEDROCK_REGION, AGENT_AUTH_ENABLED, AGENT_MCP_URL,
+)
+
+# ── Static UI (serve app.js, styles.css, index.html) ──────────────────────────
+UI_DIR = Path(__file__).parent.parent / "ui"
+app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui")
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+@app.get("/health")
+def health():
+    return {
+        "status":       "ok",
+        "auth_enabled": AGENT_AUTH_ENABLED,
+        "model":        BEDROCK_MODEL_ID,
+        "region":       BEDROCK_REGION,
+    }
+
+
+# ── Direct query endpoint (JWT + API-key protected, kept for direct testing) ──
 TOOL_MAP = {
     "get_units":          tool_get_units,
     "get_locks":          tool_get_locks,
@@ -45,13 +133,11 @@ TOOL_MAP = {
 }
 
 
-# ── Models ────────────────────────────────────────────────────────────────────
-
 class QueryRequest(BaseModel):
     tool:       str        = Field(..., description="get_units | get_locks | get_locks_to_units | describe_table")
-    user_token: str | None = Field(None, description="NOKE JWT — used when Authorization: Bearer header is not supplied")
+    user_token: str | None = Field(None, description="NOKE JWT (fallback when no Authorization header)")
     limit:      int        = Field(100, ge=1, le=1000)
-    table:      str | None = Field(None, description="Required only for describe_table")
+    table:      str | None = Field(None, description="Required for describe_table")
 
 
 class QueryResponse(BaseModel):
@@ -62,48 +148,25 @@ class QueryResponse(BaseModel):
     data:      list[dict]
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.get("/")
-@app.get("/index.html")
-def serve_ui():
-    return FileResponse(UI_FILE)
-
-
 @app.post("/api/query", response_model=QueryResponse)
 def query(
-    req: QueryRequest,
-    x_api_key: str = Header(default="", alias="X-API-Key"),
+    req:           QueryRequest,
+    x_api_key:     str = Header(default="", alias="X-API-Key"),
     authorization: str = Header(default="", alias="Authorization"),
 ):
-    """
-    Protected query endpoint.
-    Requires:
-      X-API-Key header  — identifies Amazon Q Business as the trusted caller
-      NOKE JWT supplied via one of:
-        • Authorization: Bearer <NOKE_JWT>  (Q Business OAuth plugin path)
-        • user_token body field             (direct API / dev testing path)
-    """
-    # 1. Validate API key
+    """Direct MCP tool query. Requires X-API-Key + valid NOKE JWT."""
+    logger.info("POST /api/query tool=%s", req.tool)
+
     if MCP_API_KEY and x_api_key != MCP_API_KEY:
+        logger.warning("Invalid API key on /api/query")
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
-    # 2. Resolve NOKE JWT — prefer Authorization: Bearer header (Q Business OAuth path)
-    token = ""
-    if authorization.startswith("Bearer "):
-        token = authorization[len("Bearer "):]
-    elif req.user_token:
+    token = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
+    if not token and req.user_token:
         token = req.user_token
-
     if not token:
-        raise HTTPException(status_code=401, detail="NOKE JWT required in Authorization: Bearer header or user_token body field.")
+        raise HTTPException(status_code=401, detail="NOKE JWT required.")
 
-    # 3. Validate NOKE JWT — pure local SHA256 check, no network calls
     try:
         claims = validate_noke_token(token)
     except PermissionError as e:
@@ -113,31 +176,24 @@ def query(
 
     user_id = claims["user_id"]
     site_id = claims["site_id"]
+    logger.info("/api/query user_id=%s site_id=%s tool=%s", user_id, site_id, req.tool)
 
-    # 3. Execute requested tool
     try:
         if req.tool == "describe_table":
             if not req.table:
-                raise HTTPException(status_code=400, detail="'table' is required for describe_table.")
+                raise HTTPException(status_code=400, detail="'table' required for describe_table.")
             data = tool_describe_table(req.table)
-
         elif req.tool in TOOL_MAP:
             data = TOOL_MAP[req.tool](user_id=user_id, limit=req.limit)
-
         else:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unknown tool '{req.tool}'. Available: {list(TOOL_MAP) + ['describe_table']}",
             )
-
         return QueryResponse(
-            tool=req.tool,
-            user_id=user_id,
-            site_id=site_id,
-            row_count=len(data),
-            data=data,
+            tool=req.tool, user_id=user_id, site_id=site_id,
+            row_count=len(data), data=data,
         )
-
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
@@ -145,8 +201,10 @@ def query(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+        logger.exception("Unexpected error in /api/query: %s", e)
+        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
 
 
 if __name__ == "__main__":
     uvicorn.run("mcp_server.main:app", host="0.0.0.0", port=8000, reload=False)
+

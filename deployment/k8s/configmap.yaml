@@ -4,12 +4,33 @@ metadata:
   name: noke-mcp-config
   namespace: noke-mcp
 data:
+  # ── Database (non-secret connection params) ───────────────────────────────
   DB_HOST:              "noke-mysql-cluster.cluster-cmftlirsxmms.us-east-2.rds.amazonaws.com"
   DB_PORT:              "3306"
   DB_USER:              "pradesh_kumar"
   DB_SCHEMA:            "smartentry-main"
+
+  # ── DB column / table config ──────────────────────────────────────────────
   USERS_ACTIVE_COL:     "state"
   USERS_ACTIVE_VALUE:   "active"
   USERS_ROLES_SITE_COL: "site_id"
+
+  # ── MCP server public URL ─────────────────────────────────────────────────
   MCP_BASE_URL:         "https://mcp.smartentry.noke.dev"
-  BACKEND_BASE_URL:     "https://router.smartentry.noke.dev"
+
+  # ── Bedrock (LangChain agent LLM) ─────────────────────────────────────────
+  # Credentials come from the EKS pod IAM role (IRSA) — no API key needed.
+  BEDROCK_REGION:   "us-east-2"
+  BEDROCK_MODEL_ID: "us.amazon.nova-micro-v1:0"
+
+  # ── Agent ─────────────────────────────────────────────────────────────────
+  # Set to "true" to require NOKE JWT validation on POST /agent/chat.
+  AGENT_AUTH_ENABLED: "true"
+  # Cluster-internal URL so the agent calls /mcp/sse directly without the ALB.
+  AGENT_MCP_URL: "http://noke-mcp-svc.noke-mcp.svc.cluster.local/mcp/sse"
+
+# ── SECRETS — stored in Kubernetes Secret noke-mcp-secrets ───────────────────
+#   DB_PASSWORD      — RDS database password
+#   NOKE_JWT_SECRET  — NOKE JWT signing secret (from Go backend auth.go)
+#   MCP_API_KEY      — Shared API key for POST /api/query
+# ─────────────────────────────────────────────────────────────────────────────

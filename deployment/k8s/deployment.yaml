@@ -15,9 +15,10 @@ spec:
       labels:
         app: noke-mcp
     spec:
+      serviceAccountName: agent-sa
       containers:
         - name: noke-mcp
-          image: 440124919638.dkr.ecr.us-east-2.amazonaws.com/noke-fm-mcp-server:v1.0.1
+          image: 440124919638.dkr.ecr.us-east-2.amazonaws.com/noke-fm-mcp-server:V1.0.6
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

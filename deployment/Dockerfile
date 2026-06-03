@@ -9,9 +9,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server package and UI
+# Copy server package, agent, and UI
 COPY mcp_server/ ./mcp_server/
-COPY index.html .
+COPY agent/ ./agent/
+COPY ui/ ./ui/
 
 EXPOSE 8000
 

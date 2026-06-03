@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noke Local Q Chat Test</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="backdrop"></div>
+
+  <button id="chat-launcher" aria-label="Open chat" title="Open chat">
+    <span>Ask AI</span>
+  </button>
+
+  <section id="chat-panel" aria-live="polite" aria-label="AI Chat panel" class="hidden">
+    <header class="chat-header">
+      <div>
+        <h1>Smart Entry AI</h1>
+        <p>Local end-to-end test UI</p>
+      </div>
+      <button id="chat-close" aria-label="Close chat">Close</button>
+    </header>
+
+    <main id="chat-log" class="chat-log"></main>
+
+    <form id="chat-form" class="chat-form">
+      <textarea id="chat-input" placeholder="Type your message..." rows="2"></textarea>
+      <button id="send-btn" type="submit">Send</button>
+    </form>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

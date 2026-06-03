@@ -1,9 +1,58 @@
-Under auth folder - i have copied the code which was created for the authorize. Re use this code and update it accordingly and tell me how we can test in local - also i will deploy in AWS. 
-
-for chat:
-  → Portal frontend calls MCP /api/ai/chat (with Authorization: Bearer <NOKE_JWT>)
-  → MCP proxies to Q Business
-  → Q Business OAuth challenge → MCP handles it
-  → Returns AI answer
-
-  Download all the required dependecies and check the build is working.
+  2026-06-03T18:52:03 | INFO     | agent.routes | POST /agent/chat | message='How many units are there?' | jwt_present=False                                                                                    │
+│ 2026-06-03T18:52:03 | INFO     | agent.agent | Agent running in no-auth mode (AGENT_AUTH_ENABLED=false)                                                                                                       │
+│ INFO:     169.254.175.250:2326 - "GET /mcp HTTP/1.1" 307 Temporary Redirect                                                                                                                                   │
+│ 2026-06-03T18:52:03 | INFO     | httpx | HTTP Request: GET http://noke-mcp-svc.noke-mcp.svc.cluster.local/mcp "HTTP/1.1 307 Temporary Redirect"                                                               │
+│ INFO:     169.254.175.250:2326 - "GET /mcp/ HTTP/1.1" 404 Not Found                                                                                                                                           │
+│ 2026-06-03T18:52:03 | INFO     | httpx | HTTP Request: GET http://noke-mcp-svc.noke-mcp.svc.cluster.local/mcp/ "HTTP/1.1 404 Not Found"                                                                       │
+│ 2026-06-03T18:52:03 | ERROR    | agent.routes | Agent error: unhandled errors in a TaskGroup (1 sub-exception)                                                                                                │
+│   + Exception Group Traceback (most recent call last):                                                                                                                                                        │
+│   |   File "/app/agent/routes.py", line 54, in agent_chat                                                                                                                                                     │
+│   |     result = await run_agent(                                                                                                                                                                             │
+│   |              ^^^^^^^^^^^^^^^^                                                                                                                                                                             │
+│   |   File "/app/agent/agent.py", line 103, in run_agent                                                                                                                                                      │
+│   |     tools = await mcp_client.get_tools()                                                                                                                                                                  │
+│   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                  │
+│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/client.py", line 197, in get_tools                                                                                                 │
+│   |     tools_list = await asyncio.gather(*load_mcp_tool_tasks)                                                                                                                                               │
+│   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                               │
+│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/tools.py", line 478, in load_mcp_tools                                                                                             │
+│   |     async with create_session(                                                                                                                                                                            │
+│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__     
+ 
+ |     result = await run_agent(                                                                                                                                                                             │
+│   |              ^^^^^^^^^^^^^^^^                                                                                                                                                                             │
+│   |   File "/app/agent/agent.py", line 103, in run_agent                                                                                                                                                      │
+│   |     tools = await mcp_client.get_tools()                                                                                                                                                                  │
+│   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                  │
+│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/client.py", line 197, in get_tools                                                                                                 │
+│   |     tools_list = await asyncio.gather(*load_mcp_tool_tasks)                                                                                                                                               │
+│   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                               │
+│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/tools.py", line 478, in load_mcp_tools                                                                                             │
+│   |     async with create_session(                                                                                                                                                                            │
+│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__                                                                                                                                 │
+│   |     return await anext(self.gen)                                                                                                                                                                          │
+│   |            ^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                          │
+│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/sessions.py", line 442, in create_session                                                                                          │
+│   |     async with _create_sse_session(**params) as session:                                                                                                                                                  │
+│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__                                                                                                                                 │
+│   |     return await anext(self.gen)                                                                                                                                                                          │
+│   |            ^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                          │
+│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/sessions.py", line 305, in _create_sse_session                                                                                     │
+│   |     async with (                                                                                                                                                                                          │
+│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__                                                                                                                                 │
+│   |     return await anext(self.gen)                                                                                                                                                                          │
+│   |            ^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                          │
+│   |   File "/usr/local/lib/python3.11/site-packages/mcp/client/sse.py", line 62, in sse_client                                                                                                                │
+│   |     async with anyio.create_task_group() as tg:                                                                                                                                                           │
+│   |   File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 799, in __aexit__                                                                                                      │
+│   |     raise BaseExceptionGroup(                                                                                                                                                                             │
+│   | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)                                                                                                                                         │
+│   +-+---------------- 1 ----------------                                                                                                                                                                      │
+│     | Traceback (most recent call last):                                                                                                                                                                      │
+│     |   File "/usr/local/lib/python3.11/site-packages/mcp/client/sse.py", line 73, in sse_client                                                                                                              │
+│     |     event_source.response.raise_for_status()                                                                                                                                                            │
+│     |   File "/usr/local/lib/python3.11/site-packages/httpx/_models.py", line 829, in raise_for_status                                                                                                        │
+│     |     raise HTTPStatusError(message, request=request, response=self)                                                                                                                                      │
+│     | httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://noke-mcp-svc.noke-mcp.svc.cluster.local/mcp/'                                                                                       │
+│ INFO:     10.152.5.5:42522 - "POST /agent/chat HTTP/1.1" 500 Internal Server Error                                                                                                                            │
+│     | For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404    
