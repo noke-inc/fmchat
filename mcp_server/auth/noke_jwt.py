@@ -16,14 +16,34 @@ import json
 import os
 import time
 
-NOKE_SECRET: str = os.getenv("NOKE_JWT_SECRET", "")
-
 
 def _b64_decode(s: str) -> bytes:
     """Base64url decode with padding correction."""
     s = s.replace("-", "+").replace("_", "/")
-    s += "=" * (4 - len(s) % 4)
+    pad = (-len(s)) % 4
+    if pad:
+        s += "=" * pad
     return base64.b64decode(s)
+
+
+def _to_int(value: object, claim_name: str) -> int:
+    """Convert a claim value to int while accepting JSON number/string forms."""
+    if isinstance(value, bool):
+        raise PermissionError(f"Claim '{claim_name}' has invalid type.")
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(float(value.strip()))
+        except ValueError as exc:
+            raise PermissionError(f"Claim '{claim_name}' has invalid value.") from exc
+    raise PermissionError(f"Claim '{claim_name}' has invalid type.")
+
+
+def _to_str(value: object, claim_name: str) -> str:
+    if not isinstance(value, str):
+        raise PermissionError(f"Claim '{claim_name}' has invalid type.")
+    return value
 
 
 def validate_noke_token(token: str) -> dict:
@@ -42,7 +62,8 @@ def validate_noke_token(token: str) -> dict:
         PermissionError  — invalid signature, expired token, or missing claims
         RuntimeError     — NOKE_JWT_SECRET env var is not configured
     """
-    if not NOKE_SECRET:
+    noke_secret = os.getenv("NOKE_JWT_SECRET", "")
+    if not noke_secret:
         raise RuntimeError(
             "NOKE_JWT_SECRET is not set. Add it to .env (local) or K8s secret (production)."
         )
@@ -52,6 +73,14 @@ def validate_noke_token(token: str) -> dict:
         raise PermissionError("Malformed token: expected 3 dot-separated parts.")
 
     header_b64, payload_b64, received_sig = parts
+
+    try:
+        header: dict = json.loads(_b64_decode(header_b64).decode("utf-8"))
+    except Exception:
+        raise PermissionError("Token header could not be decoded.")
+
+    if str(header.get("alg", "")).upper() != "NOKE":
+        raise PermissionError("Incorrect token algorithm.")
 
     # The Go JWT library (golang-jwt/jwt) calls Sign() → returns []byte(hex_digest),
     # then base64url-encodes those bytes as the JWT third part.
@@ -64,7 +93,7 @@ def validate_noke_token(token: str) -> dict:
         raise PermissionError("Token signature could not be decoded.")
 
     expected_hex = hashlib.sha256(
-        (header_b64 + "." + payload_b64 + NOKE_SECRET).encode("utf-8")
+        (header_b64 + "." + payload_b64 + noke_secret).encode("utf-8")
     ).hexdigest()
 
     if expected_hex != received_hex:
@@ -75,18 +104,35 @@ def validate_noke_token(token: str) -> dict:
     except Exception:
         raise PermissionError("Token payload could not be decoded.")
 
-    exp = claims.get("exp", 0)
-    if exp and int(exp) < int(time.time()):
+    required_claims = [
+        "company",
+        "nokeUser",
+        "alg",
+        "exp",
+        "iss",
+        "tokenType",
+        "sessionSalt",
+        "currentSite",
+    ]
+    missing = [name for name in required_claims if name not in claims]
+    if missing:
+        raise PermissionError(f"Token is missing required claims: {', '.join(missing)}")
+
+    if str(claims.get("alg", "")).upper() != "NOKE":
+        raise PermissionError("Incorrect algorithm claim.")
+
+    exp = _to_int(claims.get("exp"), "exp")
+    if exp and exp < int(time.time()):
         raise PermissionError("Token has expired. Please refresh your portal session.")
 
-    user_id = claims.get("nokeUser")
-    if user_id is None:
-        raise PermissionError("Token is missing the nokeUser claim.")
+    user_id = _to_int(claims.get("nokeUser"), "nokeUser")
+    site_id = _to_int(claims.get("currentSite"), "currentSite")
+    company = _to_str(claims.get("company"), "company")
+    token_type = _to_str(claims.get("tokenType"), "tokenType")
 
-    site_id = claims.get("currentSite")
     return {
-        "user_id":    int(user_id),
-        "site_id":    int(site_id) if site_id is not None else None,
-        "company":    str(claims.get("company", "")),
-        "token_type": str(claims.get("tokenType", "")),
+        "user_id": user_id,
+        "site_id": site_id,
+        "company": company,
+        "token_type": token_type,
     }

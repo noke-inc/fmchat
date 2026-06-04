@@ -3,11 +3,12 @@
 // For local dev:  http://localhost:8000/agent/chat
 // For production: https://mcp.smartentry.noke.dev/agent/chat
 const AGENT_CHAT_URL = "http://localhost:8000/agent/chat";
+console.log("fm-chat ui build 20260604-1 loaded");
 
 // Hardcoded NOKE JWT for testing — replace with a fresh portal token if expired.
 // Auth is enabled on the server so JWT is validated. User ID: 1034747, Site ID: 2223362
 // In production the portal provides this dynamically.
-const HARDCODED_NOKE_JWT = "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyMzMiLCJjdXJyZW50U2l0ZSI6MjIyMzM2MiwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODA1MjQ5MjgsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.NTI3OWZmOGQ4NDk5YzdjYzE3NmM5NGMyNGNmZDdmYTQwZGNmNWVjZTZkYmUwMjIyZGEzMzg0MDJjYTkxZTE2MQ";
+const HARDCODED_NOKE_JWT = "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyMzMiLCJjdXJyZW50U2l0ZSI6MjIyMzM2MiwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODA1OTMzNzcsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.Y2UwYmFiNWIyOWE1N2Y2YjRkNGU5M2Y2NGI5OGUwZjhkYmE2ZmUzZmIwMDNlM2NjYjFhMTliMTdhZTZmMmE1ZA";
 
 const launcher = document.getElementById("chat-launcher");
 const panel = document.getElementById("chat-panel");
@@ -56,7 +57,18 @@ async function sendMessage(message) {
 
   const data = await res.json();
   conversationId = data.conversation_id || conversationId;
-  return data.answer || "(No answer returned)";
+  return data;
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
 }
 
 launcher.addEventListener("click", () => {
@@ -64,6 +76,12 @@ launcher.addEventListener("click", () => {
   if (!log.children.length) {
     appendMeta("Connected to MCP test endpoint");
     appendMessage("ai", "Welcome. Ask about units, locks, or other Smart Entry data.");
+    const claims = decodeJwtPayload(HARDCODED_NOKE_JWT);
+    if (claims) {
+      appendMeta(
+        `Token claims -> user: ${claims.nokeUser ?? "?"}, site: ${claims.currentSite ?? "?"}, company: ${claims.company ?? "?"}`
+      );
+    }
   }
   input.focus();
 });
@@ -87,7 +105,8 @@ form.addEventListener("submit", async (e) => {
 
   try {
     appendMeta("Thinking...");
-    const reply = await sendMessage(message);
+    const result = await sendMessage(message);
+    const reply = result.answer || "(No answer returned)";
 
     // Remove trailing 'Thinking...' meta if still present at end.
     const last = log.lastElementChild;
@@ -96,11 +115,20 @@ form.addEventListener("submit", async (e) => {
     }
 
     appendMessage("ai", reply);
+    appendMeta(`Server context -> user_id: ${result.user_id ?? "?"}, site_id: ${result.site_id ?? "?"}`);
   } catch (err) {
     const last = log.lastElementChild;
     if (last && last.classList.contains("meta") && last.textContent === "Thinking...") {
       last.remove();
     }
     appendMessage("meta", `Error: ${err.message}`);
+  }
+});
+
+// Submit on Enter; use Shift+Enter for a newline in the textarea.
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    form.requestSubmit();
   }
 });

@@ -1,58 +1,43 @@
-  2026-06-03T18:52:03 | INFO     | agent.routes | POST /agent/chat | message='How many units are there?' | jwt_present=False                                                                                    │
-│ 2026-06-03T18:52:03 | INFO     | agent.agent | Agent running in no-auth mode (AGENT_AUTH_ENABLED=false)                                                                                                       │
-│ INFO:     169.254.175.250:2326 - "GET /mcp HTTP/1.1" 307 Temporary Redirect                                                                                                                                   │
-│ 2026-06-03T18:52:03 | INFO     | httpx | HTTP Request: GET http://noke-mcp-svc.noke-mcp.svc.cluster.local/mcp "HTTP/1.1 307 Temporary Redirect"                                                               │
-│ INFO:     169.254.175.250:2326 - "GET /mcp/ HTTP/1.1" 404 Not Found                                                                                                                                           │
-│ 2026-06-03T18:52:03 | INFO     | httpx | HTTP Request: GET http://noke-mcp-svc.noke-mcp.svc.cluster.local/mcp/ "HTTP/1.1 404 Not Found"                                                                       │
-│ 2026-06-03T18:52:03 | ERROR    | agent.routes | Agent error: unhandled errors in a TaskGroup (1 sub-exception)                                                                                                │
-│   + Exception Group Traceback (most recent call last):                                                                                                                                                        │
-│   |   File "/app/agent/routes.py", line 54, in agent_chat                                                                                                                                                     │
-│   |     result = await run_agent(                                                                                                                                                                             │
-│   |              ^^^^^^^^^^^^^^^^                                                                                                                                                                             │
-│   |   File "/app/agent/agent.py", line 103, in run_agent                                                                                                                                                      │
-│   |     tools = await mcp_client.get_tools()                                                                                                                                                                  │
-│   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                  │
-│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/client.py", line 197, in get_tools                                                                                                 │
-│   |     tools_list = await asyncio.gather(*load_mcp_tool_tasks)                                                                                                                                               │
-│   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                               │
-│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/tools.py", line 478, in load_mcp_tools                                                                                             │
-│   |     async with create_session(                                                                                                                                                                            │
-│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__     
- 
- |     result = await run_agent(                                                                                                                                                                             │
-│   |              ^^^^^^^^^^^^^^^^                                                                                                                                                                             │
-│   |   File "/app/agent/agent.py", line 103, in run_agent                                                                                                                                                      │
-│   |     tools = await mcp_client.get_tools()                                                                                                                                                                  │
-│   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                  │
-│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/client.py", line 197, in get_tools                                                                                                 │
-│   |     tools_list = await asyncio.gather(*load_mcp_tool_tasks)                                                                                                                                               │
-│   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                               │
-│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/tools.py", line 478, in load_mcp_tools                                                                                             │
-│   |     async with create_session(                                                                                                                                                                            │
-│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__                                                                                                                                 │
-│   |     return await anext(self.gen)                                                                                                                                                                          │
-│   |            ^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                          │
-│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/sessions.py", line 442, in create_session                                                                                          │
-│   |     async with _create_sse_session(**params) as session:                                                                                                                                                  │
-│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__                                                                                                                                 │
-│   |     return await anext(self.gen)                                                                                                                                                                          │
-│   |            ^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                          │
-│   |   File "/usr/local/lib/python3.11/site-packages/langchain_mcp_adapters/sessions.py", line 305, in _create_sse_session                                                                                     │
-│   |     async with (                                                                                                                                                                                          │
-│   |   File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__                                                                                                                                 │
-│   |     return await anext(self.gen)                                                                                                                                                                          │
-│   |            ^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                          │
-│   |   File "/usr/local/lib/python3.11/site-packages/mcp/client/sse.py", line 62, in sse_client                                                                                                                │
-│   |     async with anyio.create_task_group() as tg:                                                                                                                                                           │
-│   |   File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 799, in __aexit__                                                                                                      │
-│   |     raise BaseExceptionGroup(                                                                                                                                                                             │
-│   | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)                                                                                                                                         │
-│   +-+---------------- 1 ----------------                                                                                                                                                                      │
-│     | Traceback (most recent call last):                                                                                                                                                                      │
-│     |   File "/usr/local/lib/python3.11/site-packages/mcp/client/sse.py", line 73, in sse_client                                                                                                              │
-│     |     event_source.response.raise_for_status()                                                                                                                                                            │
-│     |   File "/usr/local/lib/python3.11/site-packages/httpx/_models.py", line 829, in raise_for_status                                                                                                        │
-│     |     raise HTTPStatusError(message, request=request, response=self)                                                                                                                                      │
-│     | httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://noke-mcp-svc.noke-mcp.svc.cluster.local/mcp/'                                                                                       │
-│ INFO:     10.152.5.5:42522 - "POST /agent/chat HTTP/1.1" 500 Internal Server Error                                                                                                                            │
-│     | For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404    
+2026-06-04T11:07:59 | INFO     | agent.agent | Running agent for message: 'how many units?'
+2026-06-04T11:07:59 | INFO     | langchain_aws.chat_models.bedrock_converse | Using Bedrock Converse API to generate response
+2026-06-04T11:07:59 | INFO     | botocore.tokens | Loading cached SSO token for Janus
+ERROR:    Exception in ASGI application
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\_utils.py", line 77, in collapse_excgroups
+  |     yield
+  |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\middleware\base.py", line 186, in __call__
+  |     async with anyio.create_task_group() as task_group:
+  |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\anyio\_backends\_asyncio.py", line 799, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 421, in run_asgi
+    |     result = await app(  # type: ignore[func-returns-value]
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    |     return await self.app(scope, receive, send)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\fastapi\applications.py", line 1054, in __call__
+    |     await super().__call__(scope, receive, send)
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\applications.py", line 113, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\middleware\errors.py", line 187, in __call__
+    |     raise exc
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\middleware\errors.py", line 165, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\middleware\base.py", line 185, in __call__
+    |     with collapse_excgroups():
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\contextlib.py", line 158, in __exit__
+    |     self.gen.throw(typ, value, traceback)
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\_utils.py", line 83, in collapse_excgroups
+    |     raise exc
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\middleware\base.py", line 188, in __call__
+    |     await response(scope, wrapped_receive, send)
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\middleware\base.py", line 222, in __call__
+    |     async for chunk in self.body_iterator:
+    |   File "C:\Users\pradesh.kumar\python\3.11\Lib\site-packages\starlette\middleware\base.py", line 171, in body_stream
+    |     assert message["type"] == "http.response.body"
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | AssertionError
+    +------------------------------------
