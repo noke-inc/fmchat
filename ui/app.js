@@ -8,7 +8,7 @@ console.log("fm-chat ui build 20260604-1 loaded");
 // Hardcoded NOKE JWT for testing — replace with a fresh portal token if expired.
 // Auth is enabled on the server so JWT is validated. User ID: 1034747, Site ID: 2223362
 // In production the portal provides this dynamically.
-const HARDCODED_NOKE_JWT = "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyMzMiLCJjdXJyZW50U2l0ZSI6MjIyMzM2MiwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODA1OTMzNzcsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.Y2UwYmFiNWIyOWE1N2Y2YjRkNGU5M2Y2NGI5OGUwZjhkYmE2ZmUzZmIwMDNlM2NjYjFhMTliMTdhZTZmMmE1ZA";
+const HARDCODED_NOKE_JWT = "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyMzMiLCJjdXJyZW50U2l0ZSI6MjIyMzM2MiwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODA2MDk0NjEsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.MTUxOTI3NGNiNzYxYjMzZDhlYjM3Y2EzYWU4ZWZkN2I3NTViY2NjMDk0ZjM4OWViZmZmYWUwZDBlYjVhMGMxOA";
 
 const launcher = document.getElementById("chat-launcher");
 const panel = document.getElementById("chat-panel");
