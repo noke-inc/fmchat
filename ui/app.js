@@ -1,8 +1,7 @@
-// Local test config
-// AGENT_CHAT_URL: the /agent/chat endpoint on the MCP server
-// For local dev:  http://localhost:8000/agent/chat
-// For production: https://mcp.smartentry.noke.dev/agent/chat
-const AGENT_CHAT_URL = "http://localhost:8000/agent/chat";
+// Chat endpoint config
+// LOCAL  (via local_proxy.py):  http://localhost:8000/agent/chat
+// DEPLOYED (Lambda + API GW):   https://5u39ntjwyj.execute-api.us-east-2.amazonaws.com/chat
+const AGENT_CHAT_URL = "https://5u39ntjwyj.execute-api.us-east-2.amazonaws.com/chat";
 console.log("fm-chat ui build 20260604-1 loaded");
 
 // Hardcoded NOKE JWT for testing — replace with a fresh portal token if expired.

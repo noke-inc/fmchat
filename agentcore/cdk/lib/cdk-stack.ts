@@ -8,8 +8,12 @@ import {
 } from '@aws/agentcore-cdk';
 import * as bedrockagentcore from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigwv2int from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { CfnOutput, Duration, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import * as path from 'path';
 export interface HarnessConfig {
   name: string;
   executionRoleArn?: string;
@@ -193,5 +197,68 @@ export class AgentCoreStack extends Stack {
       description: 'Name of the CloudFormation Stack',
       value: this.stackName,
     });
+
+    // ── Lambda chat proxy + HTTP API Gateway ─────────────────────────────────
+    // Exposes a public HTTPS endpoint: POST /chat
+    // Lambda calls invoke_agent_runtime → NokeAgent → NokeMCP → RDS
+    // boto3 SigV4 signing is handled automatically by the Lambda execution role.
+    try {
+      // Get NokeAgent CfnRuntime to read its ARN dynamically
+      const nokeAgentCfnRuntime = this.application.node.findChild('AgentNokeAgent')
+        .node.findChild('Runtime').node.defaultChild as bedrockagentcore.CfnRuntime;
+
+      // Lambda function — Python 3.12, boto3 pre-installed, no bundling needed
+      const chatLambda = new lambda.Function(this, 'ChatProxyLambda', {
+        functionName: 'NokeAgent-ChatProxy',
+        runtime:      lambda.Runtime.PYTHON_3_12,
+        handler:      'chat_proxy.handler',
+        // lambda/ is at repo root. __dirname at runtime = agentcore/cdk/dist/lib/
+        // so ../../../../lambda resolves to fm-chat/lambda/
+        code:         lambda.Code.fromAsset(path.join(__dirname, '..', '..', '..', '..', 'lambda')),
+        timeout:      Duration.seconds(90),
+        memorySize:   256,
+        environment: {
+          NOKEAGENT_RUNTIME_ARN: nokeAgentCfnRuntime.attrAgentRuntimeArn,
+        },
+        description: 'Public chat proxy: API Gateway → Lambda → NokeAgent AgentCore runtime',
+      });
+
+      // Grant Lambda role permission to invoke NokeAgent runtime
+      chatLambda.addToRolePolicy(new iam.PolicyStatement({
+        sid:       'InvokeNokeAgentRuntime',
+        actions:   ['bedrock-agentcore:InvokeAgentRuntime'],
+        resources: [nokeAgentCfnRuntime.attrAgentRuntimeArn],
+      }));
+
+      // HTTP API Gateway with CORS
+      const httpApi = new apigwv2.HttpApi(this, 'NokeChatHttpApi', {
+        apiName: 'noke-agent-chat-api',
+        corsPreflight: {
+          allowHeaders: ['Content-Type', 'Authorization'],
+          allowMethods: [apigwv2.CorsHttpMethod.POST, apigwv2.CorsHttpMethod.OPTIONS],
+          allowOrigins: ['*'],
+        },
+      });
+
+      httpApi.addRoutes({
+        path:        '/chat',
+        methods:     [apigwv2.HttpMethod.POST],
+        integration: new apigwv2int.HttpLambdaIntegration('ChatLambdaIntegration', chatLambda),
+      });
+
+      new CfnOutput(this, 'ChatApiUrl', {
+        description: 'Public chat endpoint — POST /chat with {"message":"..."}',
+        value:       `${httpApi.apiEndpoint}/chat`,
+      });
+
+      new CfnOutput(this, 'ChatLambdaArn', {
+        description: 'Lambda ARN for NokeAgent chat proxy',
+        value:       chatLambda.functionArn,
+      });
+
+      console.log('Created Lambda ChatProxy + HTTP API Gateway /chat route');
+    } catch (e) {
+      console.warn(`Could not create Lambda/APIGW resources: ${e}`);
+    }
   }
 }

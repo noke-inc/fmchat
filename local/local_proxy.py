@@ -41,7 +41,7 @@ PROFILE   = os.getenv("AWS_PROFILE", "DeveloperAdmin-440124919638")
 REGION    = "us-east-2"
 AGENT_ARN = "arn:aws:bedrock-agentcore:us-east-2:440124919638:runtime/NokeAgent_NokeAgent-tm7hzt7fsf"
 PORT      = 8000
-UI_DIR    = Path(__file__).parent / "ui"
+UI_DIR    = Path(__file__).parent.parent / "ui"
 
 # ── boto3 AgentCore client ─────────────────────────────────────────────────────
 try:
