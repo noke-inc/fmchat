@@ -64,7 +64,7 @@ async def run_agent(
     # ── 2. Invoke intent-routing graph ────────────────────────────────────────
     logger.info("Running agent for message: %r", message[:120])
 
-    result = await raph.ainvoke(
+    result = await graph.ainvoke(
         {
             "messages": [HumanMessage(content=message)],
             "user_id":  user_id,

@@ -1,3 +1,4 @@
+# Python
 .env
 __pycache__/
 *.pyc
@@ -8,4 +9,40 @@ venv/
 dist/
 build/
 .DS_Store
+
+# AgentCore — generated / staging bundles (large, auto-rebuilt on deploy)
+agentcore/.cache/
+agentcore/.cli/
+agentcore/aws-targets.json
+
+# CDK outputs (cdk/node_modules already excluded by agentcore/cdk/.gitignore)
+agentcore/cdk/cdk.out/
+agentcore/cdk/cdk.out /
+agentcore/cdk/node_modules/
+agentcore/cdk/dist/
+
+# App venvs / caches inside app/
+app/**/.venv/
+app/**/__pycache__/
+app/**/*.pyc
+
+# LangGraph local dev cache
+.langgraph_api/
+
+# Temporary diagnostic / one-off scripts (not needed to run the project)
+check_sg.py
+check_deployed.py
+check_nokemcp_logs.py
+setup_nokemcp_vpc.py
+test_runtime.py
+agentcore_config_backup.json
+agentcore_targets_backup.json
+recent_logs.txt
+synth_output.txt
+
+# Editor
+.vscode/
+
+# Justfile binary
+just
 

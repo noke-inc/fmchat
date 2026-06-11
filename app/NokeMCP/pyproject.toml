@@ -1,0 +1,33 @@
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name             = "NokeMCP"
+version          = "0.1.0"
+description      = "Noke Smart Entry MCP tools — AWS Bedrock AgentCore MCP Runtime"
+requires-python  = ">=3.11"
+
+dependencies = [
+    # AgentCore Runtime SDK (needed for OTEL instrumentation bootstrap)
+    "bedrock-agentcore>=1.0.3",
+
+    # OpenTelemetry (required by AgentCore runtime for observability)
+    "aws-opentelemetry-distro",
+
+    # MCP server framework (must stay at 2.x — do NOT upgrade to 3.x)
+    "fastmcp>=2.5.2,<3.0",
+
+    # Database
+    "PyMySQL>=1.1.0",
+
+    # Pydantic (pinned — fastmcp 2.5.2 requires <2.12)
+    "pydantic==2.11.7",
+    "pydantic-core==2.33.2",
+
+    # Utilities
+    "python-dotenv>=1.1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
