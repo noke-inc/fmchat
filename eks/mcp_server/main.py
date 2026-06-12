@@ -81,6 +81,9 @@ def describe_table(table: str) -> list[dict]:
     return tool_describe_table(table)
 
 
+# Build streamable MCP app once so we can reuse its lifespan in the parent FastAPI app.
+mcp_http_app = mcp.http_app(path="/", transport="streamable-http")
+
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Noke Smart Entry — Agent + MCP Server",
@@ -89,6 +92,7 @@ app = FastAPI(
         "AGENT_AUTH_ENABLED=false skips JWT validation (current phase)."
     ),
     version="1.0.0",
+    lifespan=mcp_http_app.lifespan,
 )
 
 app.add_middleware(
@@ -112,18 +116,18 @@ class NoCacheStaticFiles(StaticFiles):
 # POST /agent/chat
 app.include_router(agent_router)
 
-# GET /mcp  (SSE — LangChain MultiServerMCPClient connects here)
+# Gateway-compatible MCP endpoint (Streamable HTTP)
+# AgentCore Gateway target should point to: https://mcp.smartentry.noke.dev/mcp-http/
+app.mount("/mcp-http", mcp_http_app)
+
+# SSE MCP endpoint kept for local/dev LangChain MultiServerMCPClient usage
+# Local agent URL remains: http://localhost:8000/mcp/sse
 app.mount("/mcp", mcp.sse_app())
 
 logger.info(
     "Server config: model=%s region=%s auth_enabled=%s agent_mcp_url=%s",
     BEDROCK_MODEL_ID, BEDROCK_REGION, AGENT_AUTH_ENABLED, AGENT_MCP_URL,
 )
-
-# ── Static UI (serve app.js, styles.css, index.html) ──────────────────────────
-UI_DIR = Path(__file__).parent.parent / "ui"
-app.mount("/", NoCacheStaticFiles(directory=UI_DIR, html=True), name="ui")
-
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health")
@@ -134,6 +138,13 @@ def health():
         "model":        BEDROCK_MODEL_ID,
         "region":       BEDROCK_REGION,
     }
+
+
+# ── Static UI ─────────────────────────────────────────────────────────────────
+# NOTE: mount LAST — catch-all "/" shadows any routes defined after it.
+# Only mounted when the ui/ directory actually exists (local dev only).
+# In EKS the container has no ui/ directory — only /agent/chat and /mcp/sse are needed.
+UI_DIR = Path(__file__).resolve().parent.parent.parent / "ui"
 
 
 # ── Direct query endpoint (JWT + API-key protected, kept for direct testing) ──
@@ -214,6 +225,14 @@ def query(
     except Exception as e:
         logger.exception("Unexpected error in /api/query: %s", e)
         raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+
+
+# ── Static mount MUST be last — "/" catches all unmatched paths ───────────────
+if UI_DIR.exists():
+    app.mount("/", NoCacheStaticFiles(directory=UI_DIR, html=True), name="ui")
+    logger.info("Serving static UI from %s", UI_DIR)
+else:
+    logger.info("No ui/ directory found — static UI not mounted (EKS mode)")
 
 
 if __name__ == "__main__":

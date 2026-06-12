@@ -34,7 +34,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import create_react_agent
 
-from mcp_server.config import AGENT_MCP_URL, BEDROCK_MODEL_ID, BEDROCK_REGION
+from agent.gateway_mcp import get_gateway_tools
+from mcp_server.config import AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION, AGENT_MCP_URL, BEDROCK_MODEL_ID, BEDROCK_REGION
 
 logger = logging.getLogger(__name__)
 
@@ -122,11 +123,23 @@ async def _tool_node(state: AgentState, tool_names: list[str]) -> dict:
     site_id = state.get("site_id")
     system_prompt = _SYSTEM_TEMPLATE.format(user_id=user_id, site_id=site_id)
 
-    mcp_client = MultiServerMCPClient(
-        {"noke-mcp": {"url": AGENT_MCP_URL, "transport": "sse"}}
-    )
-    all_tools = await mcp_client.get_tools()
-    tools = [t for t in all_tools if t.name in tool_names]
+    # Use AgentCore Gateway (SigV4) when configured, fall back to direct SSE
+    if AGENT_GATEWAY_URL:
+        logger.info("Loading tools via Gateway: %s", AGENT_GATEWAY_URL[:60])
+        all_tools = await get_gateway_tools(AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION)
+    else:
+        logger.info("Loading tools via SSE: %s", AGENT_MCP_URL)
+        mcp_client = MultiServerMCPClient(
+            {"noke-mcp": {"url": AGENT_MCP_URL, "transport": "sse"}}
+        )
+        all_tools = await mcp_client.get_tools()
+
+    # Gateway prefixes tool names with target name (e.g. "NokeMCPEksTarget___get_units").
+    # Match by suffix after "___" separator.
+    def _matches(tool_name: str, desired: str) -> bool:
+        return tool_name == desired or tool_name.endswith(f"___{desired}")
+
+    tools = [t for t in all_tools if any(_matches(t.name, n) for n in tool_names)]
     logger.info(
         "_tool_node intent=%s tools=%s", state.get("intent"), [t.name for t in tools]
     )

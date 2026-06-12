@@ -60,7 +60,25 @@
   "credentials": [],
   "evaluators": [],
   "onlineEvalConfigs": [],
-  "agentCoreGateways": [],
+  "agentCoreGateways": [
+    {
+      "name": "NokeMCPGateway",
+      "description": "Gateway for EKS-hosted Noke MCP server",
+      "authorizerType": "AWS_IAM",
+      "enableSemanticSearch": false,
+      "exceptionLevel": "NONE",
+      "targets": [
+        {
+          "name": "NokeMCPEksTarget",
+          "targetType": "mcpServer",
+          "endpoint": "https://mcp.smartentry.noke.dev/mcp-http/",
+          "outboundAuth": {
+            "type": "NONE"
+          }
+        }
+      ]
+    }
+  ],
   "mcpRuntimeTools": [],
   "unassignedTargets": [],
   "policyEngines": [],

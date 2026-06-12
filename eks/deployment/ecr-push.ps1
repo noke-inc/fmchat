@@ -1,20 +1,18 @@
 # deployment/ecr-push.ps1
 # Builds the Docker image and pushes it to ECR.
 #
-# Usage (run from the fm-chat root directory):
+# Usage (run from the eks/ directory):
 #   .\deployment\ecr-push.ps1
-#   .\deployment\ecr-push.ps1 -Tag "v1.0.1"
+#   .\deployment\ecr-push.ps1 -Tag "V2.0.1"
 #
 # Prerequisites:
-#   - AWS CLI configured (aws configure / SSO / env vars with ECR push permissions)
+#   - AWS CLI configured with ECR push permissions
 #   - Docker Desktop running
-#   - ECR repository already created (see README or run the one-time command below)
-#
-# One-time repo creation:
-#   aws ecr create-repository --repository-name noke-fm-mcp-server --region us-east-2
+#   - ECR repository already created:
+#       aws ecr create-repository --repository-name noke-fm-mcp-server --region us-east-2
 
 param(
-    [string]$Tag = "v1.0.4"
+    [string]$Tag = "V2.0.0"
 )
 
 Set-StrictMode -Version Latest
@@ -26,9 +24,9 @@ $RepoName  = "noke-fm-mcp-server"
 $Registry  = "$AccountId.dkr.ecr.$Region.amazonaws.com"
 $FullImage = "$Registry/$RepoName`:$Tag"
 
-# Ensure we are in the fm-chat root (Dockerfile references mcp_server/ and index.html)
+# Ensure we are in the eks/ directory (Dockerfile references mcp_server/ and agent/)
 if (-not (Test-Path "mcp_server/main.py")) {
-    Write-Error "Run this script from the fm-chat root directory (where mcp_server/ lives)."
+    Write-Error "Run this script from the eks/ directory (where mcp_server/ lives)."
     exit 1
 }
 

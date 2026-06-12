@@ -1,0 +1,1 @@
+{"status":"ok","auth_enabled":true,"model":"us.amazon.nova-micro-v1:0","region":"us-east-2"}

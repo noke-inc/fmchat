@@ -18,7 +18,7 @@ spec:
       serviceAccountName: agent-sa
       containers:
         - name: noke-mcp
-          image: 440124919638.dkr.ecr.us-east-2.amazonaws.com/noke-fm-mcp-server:V1.0.6
+          image: 440124919638.dkr.ecr.us-east-2.amazonaws.com/noke-fm-mcp-server:V2.1.2
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

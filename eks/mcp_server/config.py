@@ -50,3 +50,8 @@ AGENT_AUTH_ENABLED: bool = os.getenv("AGENT_AUTH_ENABLED", "false").lower() == "
 # Locally this is http://localhost:8000; in EKS it is the internal cluster URL
 # (or the public URL when running the agent outside the cluster).
 AGENT_MCP_URL: str = os.getenv("AGENT_MCP_URL", "http://localhost:8000/mcp/sse")
+
+# AgentCore Gateway URL (streamable-http with SigV4 auth).
+# When set, the agent calls tools via the Gateway instead of direct SSE.
+AGENT_GATEWAY_URL: str = os.getenv("AGENT_GATEWAY_URL", "")
+AGENT_GATEWAY_REGION: str = os.getenv("AGENT_GATEWAY_REGION", "us-east-2")

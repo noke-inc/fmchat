@@ -1,4 +1,4 @@
-# Build from the fm-chat root:
+# Build from the eks/ directory:
 #   docker build -f deployment/Dockerfile -t noke-mcp-server .
 
 FROM python:3.11-slim
@@ -9,10 +9,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server package, agent, and UI
+# Copy server package and agent (relative to eks/ build context)
 COPY mcp_server/ ./mcp_server/
 COPY agent/ ./agent/
-COPY ui/ ./ui/
 
 EXPOSE 8000
 
