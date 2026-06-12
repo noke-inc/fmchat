@@ -24,31 +24,6 @@
         { "name": "AGENT_GATEWAY_REGION", "value": "us-east-2" },
         { "name": "AWS_REGION",           "value": "us-east-2" }
       ]
-    },
-    {
-      "name": "NokeMCP",
-      "build": "CodeZip",
-      "entrypoint": "main.py",
-      "codeLocation": "app/NokeMCP/",
-      "runtimeVersion": "PYTHON_3_12",
-      "networkMode": "VPC",
-      "networkConfig": {
-        "subnets": [
-          "subnet-0cf7e5bfbe5cbdd5d",
-          "subnet-011751ae28b96183d",
-          "subnet-0ea9e1408cb9486d5"
-        ],
-        "securityGroups": ["sg-0bbed7d400a9db657"]
-      },
-      "protocol": "HTTP",
-      "envVars": [
-        { "name": "DB_HOST",     "value": "noke-mysql-cluster.cluster-cmftlirsxmms.us-east-2.rds.amazonaws.com" },
-        { "name": "DB_PORT",     "value": "3306" },
-        { "name": "DB_USER",     "value": "pradesh_kumar" },
-        { "name": "DB_PASSWORD", "value": "Alpha45Df0#@#$" },
-        { "name": "DB_SCHEMA",   "value": "smartentry-main" },
-        { "name": "AGENT_AUTH_ENABLED", "value": "false" }
-      ]
     }
   ],
   "memories": [
