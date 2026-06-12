@@ -19,9 +19,10 @@
       "envVars": [
         { "name": "BEDROCK_REGION",      "value": "us-east-2" },
         { "name": "BEDROCK_MODEL_ID",    "value": "us.amazon.nova-micro-v1:0" },
-        { "name": "AGENT_AUTH_ENABLED",  "value": "false" },
-        { "name": "NOKEMCP_RUNTIME_ARN", "value": "arn:aws:bedrock-agentcore:us-east-2:440124919638:runtime/NokeAgent_NokeMCP-1E5MbAG99J" },
-        { "name": "AWS_REGION",          "value": "us-east-2" }
+        { "name": "AGENT_AUTH_ENABLED",   "value": "false" },
+        { "name": "AGENT_GATEWAY_URL",    "value": "https://nokeagent-nokemcpgateway-f1kx7iz7lg.gateway.bedrock-agentcore.us-east-2.amazonaws.com/mcp" },
+        { "name": "AGENT_GATEWAY_REGION", "value": "us-east-2" },
+        { "name": "AWS_REGION",           "value": "us-east-2" }
       ]
     },
     {

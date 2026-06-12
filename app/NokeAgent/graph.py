@@ -20,7 +20,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import create_react_agent
 
-from config import BEDROCK_MODEL_ID, BEDROCK_REGION
+from config import BEDROCK_MODEL_ID, BEDROCK_REGION, AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION
 from mcp_client.client import get_noke_tools
 
 logger = logging.getLogger(__name__)
@@ -103,8 +103,14 @@ async def _tool_node(state: AgentState, tool_names: list[str]) -> dict:
     site_id = state.get("site_id")
     system_prompt = _SYSTEM_TEMPLATE.format(user_id=user_id, site_id=site_id)
 
-    mcp_tools = await get_noke_tools()
-    tools = [t for t in mcp_tools if t.name in tool_names]
+    mcp_tools = await get_noke_tools(AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION)
+
+    # Gateway prefixes tool names with target name (e.g. "NokeMCPEksTarget___get_units").
+    # Match by suffix after "___" separator.
+    def _matches(tool_name: str, desired: str) -> bool:
+        return tool_name == desired or tool_name.endswith(f"___{desired}")
+
+    tools = [t for t in mcp_tools if any(_matches(t.name, n) for n in tool_names)]
     logger.info(
         "_tool_node intent=%s tools=%s", state.get("intent"), [t.name for t in tools]
     )

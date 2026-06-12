@@ -28,6 +28,7 @@ dependencies = [
     # AWS SDK
     "botocore[crt]>=1.35.0",
     "boto3>=1.34.0",
+    "httpx>=0.27.0",
 
     # Pydantic (pinned — fastmcp 2.5.2 requires <2.12)
     "pydantic==2.11.7",
