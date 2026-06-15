@@ -1,12 +1,25 @@
 """
-app/NokeAgent/graph.py
+agent/graph.py
 
-Intent-routing LangGraph for Noke Smart Entry — AgentCore deployment version.
+Intent-based LangGraph for Noke Smart Entry.
 
-Topology identical to agent/graph.py but:
-  • Imports from local config.py (no mcp_server/ dependency)
-  • build_graph() accepts an optional checkpointer for short-term memory
-  • Module-level `graph` is NOT compiled here (main.py compiles with MemorySaver)
+Graph topology:
+
+    START
+      └─► classify_intent   ← LLM classifies into one of 5 intents
+              │
+    ┌─────────┼─────────────────────────────────────┐
+    │         │                                     │
+  units     locks    locks_to_units   schema    general
+    │         │            │            │            │
+    └─────────┴────────────┴────────────┴────────────┘
+                                │
+                               END
+
+Benefits over single ReAct agent:
+  • LLM only sees the relevant tool — fewer tokens, less hallucination.
+  • Each intent node is independently replaceable / testable.
+  • Graph is inspectable in LangGraph Studio (`langgraph dev`).
 """
 
 import logging
@@ -16,18 +29,20 @@ from langchain_aws import ChatBedrock
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import create_react_agent
 
-from config import BEDROCK_MODEL_ID, BEDROCK_REGION, AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION
-from mcp_client.client import get_noke_tools
+from agent.gateway_mcp import get_gateway_tools
+from mcp_server.config import AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION, AGENT_MCP_URL, BEDROCK_MODEL_ID, BEDROCK_REGION
 
 logger = logging.getLogger(__name__)
 
 # ── Intent literal type ───────────────────────────────────────────────────────
 Intent = Literal["units", "locks", "locks_to_units", "sites"]
 
+# Which MCP tool each intent should access
 INTENT_TOOLS: dict[str, list[str]] = {
     "units":          ["get_units"],
     "locks":          ["get_locks"],
@@ -38,11 +53,12 @@ INTENT_TOOLS: dict[str, list[str]] = {
 
 # ── Shared state ──────────────────────────────────────────────────────────────
 class AgentState(TypedDict):
+    """State threaded through every node in the graph."""
     messages:     Annotated[list[BaseMessage], add_messages]
     user_id:      int
     site_id:      Optional[int]
     company_uuid: Optional[str]
-    intent:       Optional[Intent]
+    intent:       Optional[Intent]          # set by classify_intent
 
 
 # ── LLM factory ──────────────────────────────────────────────────────────────
@@ -63,7 +79,7 @@ _CLASSIFY_PROMPT = ChatPromptTemplate.from_messages([
         "  units          → questions about storage units, unit counts, unit details\n"
         "  locks          → questions about locks, lock status, lock type\n"
         "  locks_to_units → questions about which lock is on which unit, "
-                               "lock-to-unit assignments or mappings\n"
+                           "lock-to-unit assignments or mappings\n"
         "  sites          → questions about site names or listing sites for a company\n",
     ),
     ("human", "{message}"),
@@ -71,6 +87,7 @@ _CLASSIFY_PROMPT = ChatPromptTemplate.from_messages([
 
 
 async def classify_intent(state: AgentState) -> dict:
+    """Classify the latest HumanMessage to decide which tool node to call."""
     last_human = next(
         (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         "",
@@ -82,10 +99,12 @@ async def classify_intent(state: AgentState) -> dict:
     return {"intent": intent}
 
 
+# ── Conditional edge: route by intent ────────────────────────────────────────
 def route_intent(state: AgentState) -> Intent:
     return state.get("intent") or "units"
 
 
+# ── Node factory: ReAct sub-agent with a single tool group ───────────────────
 _SYSTEM_TEMPLATE = (
     "You are a direct assistant for a Noke Smart Entry site manager.\n\n"
     "Rules (CRITICAL):\n"
@@ -104,19 +123,29 @@ _SYSTEM_TEMPLATE = (
 
 
 async def _tool_node(state: AgentState, tool_names: list[str]) -> dict:
-    user_id = state.get("user_id", 0)
-    site_id = state.get("site_id")
+    """Load the named MCP tools and run a focused ReAct sub-agent."""
+    user_id      = state.get("user_id", 0)
+    site_id      = state.get("site_id")
     company_uuid = state.get("company_uuid")
     system_prompt = _SYSTEM_TEMPLATE.format(user_id=user_id, site_id=site_id, company_uuid=company_uuid)
 
-    mcp_tools = await get_noke_tools(AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION)
+    # Use AgentCore Gateway (SigV4) when configured, fall back to direct SSE
+    if AGENT_GATEWAY_URL:
+        logger.info("Loading tools via Gateway: %s", AGENT_GATEWAY_URL[:60])
+        all_tools = await get_gateway_tools(AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION)
+    else:
+        logger.info("Loading tools via SSE: %s", AGENT_MCP_URL)
+        mcp_client = MultiServerMCPClient(
+            {"noke-mcp": {"url": AGENT_MCP_URL, "transport": "sse"}}
+        )
+        all_tools = await mcp_client.get_tools()
 
     # Gateway prefixes tool names with target name (e.g. "NokeMCPEksTarget___get_units").
     # Match by suffix after "___" separator.
     def _matches(tool_name: str, desired: str) -> bool:
         return tool_name == desired or tool_name.endswith(f"___{desired}")
 
-    tools = [t for t in mcp_tools if any(_matches(t.name, n) for n in tool_names)]
+    tools = [t for t in all_tools if any(_matches(t.name, n) for n in tool_names)]
     logger.info(
         "_tool_node intent=%s tools=%s", state.get("intent"), [t.name for t in tools]
     )
@@ -126,26 +155,26 @@ async def _tool_node(state: AgentState, tool_names: list[str]) -> dict:
     return {"messages": [result["messages"][-1]]}
 
 
+# Individual named nodes (required for LangGraph to give them distinct names in Studio)
 async def node_units(state: AgentState) -> dict:
     return await _tool_node(state, ["get_units"])
+
 
 async def node_locks(state: AgentState) -> dict:
     return await _tool_node(state, ["get_locks"])
 
+
 async def node_locks_to_units(state: AgentState) -> dict:
     return await _tool_node(state, ["get_locks_to_units"])
+
 
 async def node_sites(state: AgentState) -> dict:
     return await _tool_node(state, ["get_sites_by_company"])
 
 
+# ── Build & compile ───────────────────────────────────────────────────────────
 def build_graph(checkpointer=None):
-    """Compile the intent-routing StateGraph.
-
-    Args:
-        checkpointer: Optional LangGraph checkpointer for short-term memory
-                      (MemorySaver in main.py gives per-session history).
-    """
+    """Compile the intent-routing StateGraph."""
     builder = StateGraph(AgentState)
 
     builder.add_node("classify_intent",  classify_intent)
@@ -169,3 +198,7 @@ def build_graph(checkpointer=None):
         builder.add_edge(node_name, END)
 
     return builder.compile(checkpointer=checkpointer)
+
+
+# ── Exported graph (consumed by langgraph.json and agent.py) ─────────────────
+graph = build_graph()
