@@ -216,3 +216,20 @@ else:
 if __name__ == "__main__":
     uvicorn.run("mcp_server.main:app", host="0.0.0.0", port=8000, reload=False)
 
+
+from mcp_server.tools import (
+    tool_describe_table,
+    tool_get_locks,
+    tool_get_locks_to_units,
+    tool_get_units,
+    tool_get_sites_by_company,
+)
+
+
+
+@mcp.tool()
+def get_sites_by_company(company_uuid: str) -> list[dict]:
+    """Return all sites (id, name) for the given company_uuid."""
+    logger.debug("MCP tool: get_sites_by_company company_uuid=%s", company_uuid)
+    return tool_get_sites_by_company(company_uuid=company_uuid)
+

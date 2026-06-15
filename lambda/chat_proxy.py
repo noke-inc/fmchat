@@ -125,3 +125,15 @@ def handler(event: dict, context) -> dict:
         "user_id":         1034747,
         "site_id":         None,
     })
+
+    site_id = body.get("site_id") or 2223363
+    
+    logger.info("invoke: session=%s prompt=%r", session_id, message[:120])
+
+    payload = json.dumps({
+        "prompt":     message,
+        "session_id": session_id,
+        "user_id":    1034747,
+        "site_id":    site_id,
+        "authorization": authorization,
+    }).encode()

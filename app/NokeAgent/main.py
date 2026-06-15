@@ -88,7 +88,7 @@ async def invoke(payload: dict[str, Any], context: Any):
 
     prompt: str = payload.get("prompt") or payload.get("message", "")
     user_id = int(claims["user_id"]) if claims else int(payload.get("user_id", 1034747))
-    site_id = int(claims["site_id"]) if claims else payload.get("site_id")
+    site_id = int(claims["site_id"]) if claims else payload.get("site_id","2223363")
     if site_id is not None:
       site_id = int(site_id)
 

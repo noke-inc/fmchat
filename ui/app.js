@@ -139,3 +139,80 @@ input.addEventListener("keydown", (e) => {
     form.requestSubmit();
   }
 });
+
+const siteSelector = document.getElementById("site-selector");
+const siteSelect = document.getElementById("site-select");
+
+let conversationId = null;
+let selectedSiteId = null;
+
+// Mock sites data - in production this comes from JWT company_uuid lookup
+const MOCK_SITES = [
+  { id: 1, name: "Main Facility" },
+  { id: 2, name: "Satellite Location" },
+  { id: 2223362, name: "Test Site" },
+];
+
+function initializeSiteSelector() {
+  const claims = decodeJwtPayload(HARDCODED_NOKE_JWT);
+  if (!claims) {
+    console.error("Failed to decode JWT");
+    return;
+  }
+  
+  const companyUuid = claims.company;
+  console.log("JWT company_uuid:", companyUuid);
+  
+  // Populate dropdown with mock sites (in production, fetch from /api/sites?company_uuid=...)
+  siteSelect.innerHTML = '<option value="">-- Select a site --</option>';
+  MOCK_SITES.forEach(site => {
+    const opt = document.createElement("option");
+    opt.value = site.id;
+    opt.textContent = site.name;
+    siteSelect.appendChild(opt);
+  });
+  
+  // Restore last selected site from localStorage if available
+  const saved = localStorage.getItem("noke_selected_site_id");
+  if (saved && MOCK_SITES.some(s => s.id === parseInt(saved))) {
+    siteSelect.value = saved;
+    selectedSiteId = parseInt(saved);
+  }
+}
+
+siteSelect.addEventListener("change", (e) => {
+  selectedSiteId = e.target.value ? parseInt(e.target.value) : null;
+  if (selectedSiteId) {
+    localStorage.setItem("noke_selected_site_id", selectedSiteId);
+  }
+});
+
+launcher.addEventListener("click", () => {
+  panel.classList.remove("hidden");
+  initializeSiteSelector();
+  if (!log.children.length) {
+    appendMeta("Connected to MCP test endpoint");
+    appendMessage("ai", "Welcome. Select a site above and ask about units, locks, or other Smart Entry data.");
+  }
+  input.focus();
+});
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const message = input.value.trim();
+  if (!message) return;
+  
+  if (!selectedSiteId) {
+    appendMessage("meta", "Please select a site from the dropdown above before sending a message.");
+    return;
+  }
+
+async function sendMessage(message) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${HARDCODED_NOKE_JWT}`,
+  };
+
+  const payload = { message };
+  if (conversationId) payload.conversation_id = conversationId;
+  if (selectedSiteId) payload.site_id = selectedSiteId;

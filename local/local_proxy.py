@@ -212,23 +212,27 @@ class ProxyHandler(BaseHTTPRequestHandler):
             log.exception("AgentCore call failed: %s", e)
             self._json_error(500, f"AgentCore error: {e}")
             return
+                    # Extract conversation_id to reuse as session_id for memory continuity
+                    session_id = req.get("conversation_id") or None
+        
+                    # Extract site_id selected in UI
+                    site_id = req.get("site_id") or 2223363
 
-        # NokeAgent returns {"answer": "...", ...} or {"result": "..."} or a raw string
-        answer = (
-            result.get("answer")
-            or result.get("result")
-            or result.get("response")
-            or str(result)
-        )
-        answer = _strip_thinking(answer)
+                    # Forward Authorization header so AGENT_AUTH_ENABLED=true is testable locally
+                    authorization = (
+                        self.headers.get("Authorization")
+                        or self.headers.get("authorization")
+                        or ""
+                    )
 
-        response_payload = json.dumps({
-            "answer":          answer,
-            "conversation_id": used_sid,
-            "user_id":         1034747,
-            "site_id":         None,
-        }).encode()
-
+                    try:
+                        result, used_sid = call_agent(
+                            prompt=message,
+                            user_id=1034747,
+                            site_id=site_id,
+                            session_id=session_id,
+                            authorization=authorization,
+                        )
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(response_payload)))

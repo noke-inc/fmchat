@@ -29,6 +29,9 @@ USERS_ROLES_SITE_COL: str = os.getenv("USERS_ROLES_SITE_COL", "site_id")
 # --- Allowed query tables (whitelist) ---
 ALLOWED_TABLES: set[str] = {"v2_units", "v2_locks", "v2_locks_to_units", "users", "users_roles"}
 
+# --- Allowed query tables (whitelist) ---
+ALLOWED_TABLES: set[str] = {"v2_units", "v2_locks", "v2_locks_to_units", "users", "users_roles", "sites"}
+
 # --- NOKE JWT (must match Go backend helpers/auth/auth.go CreateDigest secret) ---
 NOKE_JWT_SECRET: str = os.getenv("NOKE_JWT_SECRET", "")
 

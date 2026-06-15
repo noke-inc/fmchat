@@ -59,3 +59,12 @@ def tool_describe_table(table_name: str) -> list[dict]:
             f"Table '{table_name}' is not allowed. Permitted tables: {sorted(ALLOWED_TABLES)}"
         )
     return execute_query(f"DESCRIBE `{table_name}`")
+
+
+def tool_get_sites_by_company(company_uuid: str) -> list[dict]:
+    """
+    Return all sites (id, name) for the given company_uuid.
+    No user_id required — site list is public for company members.
+    """
+    sql = "SELECT id, name FROM sites WHERE company_uuid = %s ORDER BY name"
+    return execute_query(sql, (company_uuid,))
