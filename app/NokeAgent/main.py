@@ -27,6 +27,7 @@ Deploy:
 """
 
 import logging
+import re
 from typing import Any
 
 from langchain_core.messages import HumanMessage
@@ -113,6 +114,11 @@ async def invoke(payload: dict[str, Any], context: Any):
     )
 
     answer: str = result["messages"][-1].content
+
+    # Strip any <thinking>...</thinking> blocks that reasoning models emit.
+    # These are internal model reasoning and must never be shown to end users.
+    answer = re.sub(r"<thinking>.*?</thinking>", "", answer, flags=re.DOTALL).strip()
+
     log.info("Answer: session=%s answer=%r", session_id, str(answer)[:200])
 
     return {"result": answer, "session_id": session_id}
