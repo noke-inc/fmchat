@@ -103,14 +103,17 @@ async def invoke(payload: dict[str, Any], context: Any):
     # LangGraph config — thread_id drives MemorySaver checkpointing
     config = {"configurable": {"thread_id": session_id}}
 
+    company_uuid = claims["company"] if claims else payload.get("company_uuid")
+
     result = await _graph.ainvoke(
-        {
-            "messages": [HumanMessage(content=prompt)],
-            "user_id":  user_id,
-            "site_id":  site_id,
-            "intent":   None,
-        },
-        config=config,
+      {
+        "messages": [HumanMessage(content=prompt)],
+        "user_id":  user_id,
+        "site_id":  site_id,
+        "company_uuid": company_uuid,
+        "intent":   None,
+      },
+      config=config,
     )
 
     answer: str = result["messages"][-1].content

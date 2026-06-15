@@ -26,14 +26,13 @@ from mcp_client.client import get_noke_tools
 logger = logging.getLogger(__name__)
 
 # ── Intent literal type ───────────────────────────────────────────────────────
-Intent = Literal["units", "locks", "locks_to_units", "schema", "general"]
+Intent = Literal["units", "locks", "locks_to_units", "sites"]
 
 INTENT_TOOLS: dict[str, list[str]] = {
     "units":          ["get_units"],
     "locks":          ["get_locks"],
     "locks_to_units": ["get_locks_to_units"],
-    "schema":         ["describe_table"],
-    "general":        [],
+    "sites":          ["get_sites_by_company"],
 }
 
 
@@ -63,10 +62,8 @@ _CLASSIFY_PROMPT = ChatPromptTemplate.from_messages([
         "  units          → questions about storage units, unit counts, unit details\n"
         "  locks          → questions about locks, lock status, lock type\n"
         "  locks_to_units → questions about which lock is on which unit, "
-                           "lock-to-unit assignments or mappings\n"
-        "  schema         → questions about table columns, database structure, "
-                           "what fields / attributes exist\n"
-        "  general        → greetings, general help, anything else\n",
+                               "lock-to-unit assignments or mappings\n"
+        "  sites          → questions about site names or listing sites for a company\n",
     ),
     ("human", "{message}"),
 ])
@@ -79,13 +76,13 @@ async def classify_intent(state: AgentState) -> dict:
     )
     chain = _CLASSIFY_PROMPT | _llm() | StrOutputParser()
     raw: str = (await chain.ainvoke({"message": last_human})).strip().lower()
-    intent: Intent = raw if raw in INTENT_TOOLS else "general"
+    intent: Intent = raw if raw in INTENT_TOOLS else "units"
     logger.info("classify_intent: %r → %s", last_human[:80], intent)
     return {"intent": intent}
 
 
 def route_intent(state: AgentState) -> Intent:
-    return state.get("intent") or "general"
+    return state.get("intent") or "units"
 
 
 _SYSTEM_TEMPLATE = (
@@ -100,15 +97,16 @@ _SYSTEM_TEMPLATE = (
     "6. Do not use ANY XML tags like <thinking>, <answer>, etc. Plain text only.\n"
     "7. If a tool fails or data is missing, respond: 'Unable to retrieve that information. "
       "Please contact support if this persists.'\n\n"
-    "Your tools: units, locks, lock-to-unit mappings, table schemas. Nothing else.\n"
-    "Context: user_id={user_id}, site_id={site_id}."
+    "Your tools: units, locks, lock-to-unit mappings, sites. Nothing else.\n"
+    "Context: user_id={user_id}, site_id={site_id}, company_uuid={company_uuid}."
 )
 
 
 async def _tool_node(state: AgentState, tool_names: list[str]) -> dict:
     user_id = state.get("user_id", 0)
     site_id = state.get("site_id")
-    system_prompt = _SYSTEM_TEMPLATE.format(user_id=user_id, site_id=site_id)
+    company_uuid = state.get("company_uuid")
+    system_prompt = _SYSTEM_TEMPLATE.format(user_id=user_id, site_id=site_id, company_uuid=company_uuid)
 
     mcp_tools = await get_noke_tools(AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION)
 
@@ -139,22 +137,8 @@ async def node_locks_to_units(state: AgentState) -> dict:
 async def node_schema(state: AgentState) -> dict:
     return await _tool_node(state, ["describe_table"])
 
-async def node_general(state: AgentState) -> dict:
-    user_id = state.get("user_id", 0)
-    site_id = state.get("site_id")
-    system_prompt = _SYSTEM_TEMPLATE.format(user_id=user_id, site_id=site_id)
-    last_human = next(
-        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-        "",
-    )
-    answer: AIMessage = await _llm().ainvoke(
-        [SystemMessage(content=system_prompt), HumanMessage(content=last_human)]
-    )
-    return {"messages": [answer]}
-
-
-# ── Build & compile ───────────────────────────────────────────────────────────
-def build_graph(checkpointer=None):
+async def node_sites(state: AgentState) -> dict:
+    return await _tool_node(state, ["get_sites_by_company"])
     """Compile the intent-routing StateGraph.
 
     Args:
@@ -167,8 +151,7 @@ def build_graph(checkpointer=None):
     builder.add_node("units",            node_units)
     builder.add_node("locks",            node_locks)
     builder.add_node("locks_to_units",   node_locks_to_units)
-    builder.add_node("schema",           node_schema)
-    builder.add_node("general",          node_general)
+    builder.add_node("sites",            node_sites)
 
     builder.add_edge(START, "classify_intent")
     builder.add_conditional_edges(
@@ -178,11 +161,10 @@ def build_graph(checkpointer=None):
             "units":          "units",
             "locks":          "locks",
             "locks_to_units": "locks_to_units",
-            "schema":         "schema",
-            "general":        "general",
+            "sites":          "sites",
         },
     )
-    for node_name in ("units", "locks", "locks_to_units", "schema", "general"):
+    for node_name in ("units", "locks", "locks_to_units", "sites"):
         builder.add_edge(node_name, END)
 
     return builder.compile(checkpointer=checkpointer)
