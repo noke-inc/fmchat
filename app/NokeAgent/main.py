@@ -34,6 +34,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
+from auth.noke_jwt import validate_noke_token
+from config import AGENT_AUTH_ENABLED
 from graph import build_graph          # graph.py in same directory
 
 # ── Instrumentation ───────────────────────────────────────────────────────────
@@ -57,16 +59,37 @@ async def invoke(payload: dict[str, Any], context: Any):
     conversation history within a session (short-term memory).  AgentCore
     Runtime ensures each user session runs in an isolated microVM.
     """
-    prompt: str     = payload.get("prompt") or payload.get("message", "")
     session_id: str = (
         payload.get("session_id")
         or payload.get("sessionId")
         or "default-session"
     )
-    user_id: int    = int(payload.get("user_id", 1034747))
-    site_id         = payload.get("site_id")
+
+    # First step: optional JWT auth guard controlled by AGENT_AUTH_ENABLED.
+    claims: dict | None = None
+    if AGENT_AUTH_ENABLED:
+      authorization = str(payload.get("authorization", "")).strip()
+      token = (
+        authorization.removeprefix("Bearer ").strip()
+        if authorization.startswith("Bearer ")
+        else str(payload.get("jwt_token") or payload.get("user_token") or "").strip()
+      )
+      if not token:
+        return {
+          "error": "Missing JWT token. Provide 'authorization: Bearer <token>' or 'jwt_token'."
+        }
+      try:
+        claims = validate_noke_token(token)
+      except PermissionError as e:
+        return {"error": f"JWT validation failed: {e}"}
+      except RuntimeError as e:
+        return {"error": f"JWT configuration error: {e}"}
+
+    prompt: str = payload.get("prompt") or payload.get("message", "")
+    user_id = int(claims["user_id"]) if claims else int(payload.get("user_id", 1034747))
+    site_id = int(claims["site_id"]) if claims else payload.get("site_id")
     if site_id is not None:
-        site_id = int(site_id)
+      site_id = int(site_id)
 
     log.info(
         "Invoke: session=%s user_id=%s site_id=%s prompt=%r",

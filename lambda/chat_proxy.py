@@ -73,6 +73,13 @@ def handler(event: dict, context) -> dict:
     if not message:
         return _response(400, {"error": "'message' field is required"})
 
+    headers = event.get("headers") or {}
+    authorization = (
+        headers.get("Authorization")
+        or headers.get("authorization")
+        or ""
+    )
+
     session_id = body.get("conversation_id") or f"ui-{uuid.uuid4().hex[:8]}"
 
     logger.info("invoke: session=%s prompt=%r", session_id, message[:120])
@@ -81,6 +88,7 @@ def handler(event: dict, context) -> dict:
         "prompt":     message,
         "session_id": session_id,
         "user_id":    1034747,
+        "authorization": authorization,
     }).encode()
 
     try:

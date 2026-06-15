@@ -21,3 +21,7 @@ AGENT_GATEWAY_URL: str = os.getenv(
     "https://nokeagent-nokemcpgateway-f1kx7iz7lg.gateway.bedrock-agentcore.us-east-2.amazonaws.com/mcp",
 )
 AGENT_GATEWAY_REGION: str = os.getenv("AGENT_GATEWAY_REGION", "us-east-2")
+
+# Agent auth
+# When true, the runtime requires a valid NOKE JWT token in the request payload.
+AGENT_AUTH_ENABLED: bool = os.getenv("AGENT_AUTH_ENABLED", "false").lower() == "true"

@@ -75,12 +75,12 @@ launcher.addEventListener("click", () => {
   if (!log.children.length) {
     appendMeta("Connected to MCP test endpoint");
     appendMessage("ai", "Welcome. Ask about units, locks, or other Smart Entry data.");
-    const claims = decodeJwtPayload(HARDCODED_NOKE_JWT);
-    if (claims) {
-      appendMeta(
-        `Token claims -> user: ${claims.nokeUser ?? "?"}, site: ${claims.currentSite ?? "?"}, company: ${claims.company ?? "?"}`
-      );
-    }
+    // const claims = decodeJwtPayload(HARDCODED_NOKE_JWT);
+    // if (claims) {
+    //   appendMeta(
+    //     `Token claims -> user: ${claims.nokeUser ?? "?"}, site: ${claims.currentSite ?? "?"}, company: ${claims.company ?? "?"}`
+    //   );
+    // }
   }
   input.focus();
 });
@@ -114,7 +114,7 @@ form.addEventListener("submit", async (e) => {
     }
 
     appendMessage("ai", reply);
-    appendMeta(`Server context -> user_id: ${result.user_id ?? "?"}, site_id: ${result.site_id ?? "?"}`);
+    //appendMeta(`Server context -> user_id: ${result.user_id ?? "?"}, site_id: ${result.site_id ?? "?"}`);
   } catch (err) {
     const last = log.lastElementChild;
     if (last && last.classList.contains("meta") && last.textContent === "Thinking...") {
