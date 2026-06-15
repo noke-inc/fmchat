@@ -23,6 +23,7 @@ Endpoints:
     POST /agent/chat → proxies to agent (local dev server or deployed runtime)
 """
 
+import base64
 import json
 import os
 import sys
@@ -49,6 +50,40 @@ def _strip_thinking(text: object) -> str:
     cleaned = re.sub(r"<thinking>.*?</thinking>", "", str(text), flags=re.DOTALL | re.IGNORECASE)
     return cleaned.strip()
 
+
+def _decode_jwt_claims(token: str) -> dict:
+    """Decode a JWT payload without signature verification (for extracting context claims)."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return {}
+        padded = parts[1] + "=" * (-len(parts[1]) % 4)
+        return json.loads(base64.urlsafe_b64decode(padded).decode())
+    except Exception:
+        return {}
+
+
+def _extract_context(req_body: dict, authorization: str) -> tuple[int, int | None, str | None]:
+    """Return (user_id, site_id, company_uuid) from request body, falling back to JWT claims."""
+    # 1. Decode JWT for fallback values
+    token = ""
+    if authorization.startswith("Bearer "):
+        token = authorization[7:].strip()
+    claims = _decode_jwt_claims(token) if token else {}
+
+    jwt_user_id     = claims.get("nokeUser")
+    jwt_site_id     = claims.get("currentSite")
+    jwt_company     = str(claims.get("company", "")) or None
+
+    # 2. Request body wins over JWT (allows test overrides from the UI)
+    user_id     = int(req_body.get("user_id") or jwt_user_id or 1034747)
+    site_id_raw = req_body.get("site_id") or jwt_site_id
+    site_id     = int(site_id_raw) if site_id_raw is not None else None
+    company_uuid = str(req_body.get("company_uuid") or jwt_company or "")
+    company_uuid = company_uuid or None
+
+    return user_id, site_id, company_uuid
+
 # ── Config ─────────────────────────────────────────────────────────────────────
 PROFILE         = os.getenv("AWS_PROFILE", "DeveloperAdmin-440124919638")
 REGION          = "us-east-2"
@@ -74,7 +109,8 @@ else:
 def call_agent(
     prompt: str,
     user_id: int = 1034747,
-    site_id: int = 2223363,
+    site_id: int | None = None,
+    company_uuid: str | None = None,
     session_id: str | None = None,
     authorization: str = "",
 ) -> tuple[dict, str]:
@@ -82,10 +118,11 @@ def call_agent(
     sid = session_id or f"ui-{uuid.uuid4().hex[:8]}"
 
     agent_payload: dict = {
-        "prompt":     prompt,
-        "session_id": sid,
-        "user_id":    user_id,
-        "site_id":    site_id,
+        "prompt":       prompt,
+        "session_id":   sid,
+        "user_id":      user_id,
+        "site_id":      site_id,
+        "company_uuid": company_uuid,
     }
     # Forward the JWT so AGENT_AUTH_ENABLED=true works locally too.
     if authorization:
@@ -201,10 +238,18 @@ class ProxyHandler(BaseHTTPRequestHandler):
             or ""
         )
 
+        user_id, site_id, company_uuid = _extract_context(req, authorization)
+        log.info(
+            "context  user_id=%s  site_id=%s  company_uuid=%s",
+            user_id, site_id, company_uuid,
+        )
+
         try:
             result, used_sid = call_agent(
                 prompt=message,
-                user_id=1034747,
+                user_id=user_id,
+                site_id=site_id,
+                company_uuid=company_uuid,
                 session_id=session_id,
                 authorization=authorization,
             )
@@ -224,8 +269,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
         response_payload = json.dumps({
             "answer":          answer,
             "conversation_id": used_sid,
-            "user_id":         1034747,
-            "site_id":         None,
+            "user_id":         user_id,
+            "site_id":         site_id,
+            "company_uuid":    company_uuid,
         }).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
