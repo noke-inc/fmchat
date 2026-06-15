@@ -35,17 +35,11 @@ function appendMeta(text) {
 }
 
 async function sendMessage(message) {
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${HARDCODED_NOKE_JWT}`,
-  };
-
   const payload = { message };
   if (conversationId) payload.conversation_id = conversationId;
 
   const res = await fetch(AGENT_CHAT_URL, {
     method: "POST",
-    headers,
     body: JSON.stringify(payload),
   });
 
@@ -93,11 +87,6 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = input.value.trim();
   if (!message) return;
-
-  if (!HARDCODED_NOKE_JWT || HARDCODED_NOKE_JWT === "REPLACE_WITH_REAL_NOKE_JWT") {
-    appendMessage("meta", "Set HARDCODED_NOKE_JWT in ui/app.js before testing.");
-    return;
-  }
 
   appendMessage("user", message);
   input.value = "";
