@@ -1,8 +1,16 @@
 // Chat endpoint config
 // LOCAL  (EKS server):          http://localhost:8000/agent/chat https://mcp.smartentry.noke.dev/agent/chat
 // DEPLOYED (Lambda + API GW):   https://5u39ntjwyj.execute-api.us-east-2.amazonaws.com/chat
-const AGENT_CHAT_URL = "https://5u39ntjwyj.execute-api.us-east-2.amazonaws.com/chat";
+const AGENT_CHAT_URL =
+  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "http://localhost:8000/agent/chat"
+    : "https://5u39ntjwyj.execute-api.us-east-2.amazonaws.com/chat";
 console.log("fm-chat ui build 20260604-1 loaded");
+
+function stripThinking(text) {
+  if (!text) return text;
+  return String(text).replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").trim();
+}
 
 // Hardcoded NOKE JWT for testing — replace with a fresh portal token if expired.
 // Auth is enabled on the server so JWT is validated. User ID: 1034747, Site ID: 2223362
@@ -105,7 +113,7 @@ form.addEventListener("submit", async (e) => {
   try {
     appendMeta("Thinking...");
     const result = await sendMessage(message);
-    const reply = result.answer || "(No answer returned)";
+    const reply = stripThinking(result.answer || "(No answer returned)");
 
     // Remove trailing 'Thinking...' meta if still present at end.
     const last = log.lastElementChild;

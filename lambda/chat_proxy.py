@@ -23,6 +23,7 @@ No external dependencies — boto3 is pre-installed in Lambda Python 3.12 runtim
 import json
 import logging
 import os
+import re
 import uuid
 
 import boto3
@@ -35,6 +36,12 @@ REGION    = os.environ.get("AWS_REGION", "us-east-2")
 
 # Re-use client across warm invocations
 _client = boto3.client("bedrock-agentcore", region_name=REGION)
+
+
+def _strip_thinking(text: object) -> str:
+    """Remove model reasoning blocks from responses before returning to clients."""
+    cleaned = re.sub(r"<thinking>.*?</thinking>", "", str(text), flags=re.DOTALL | re.IGNORECASE)
+    return cleaned.strip()
 
 CORS = {
     "Access-Control-Allow-Origin":  "*",
@@ -108,6 +115,7 @@ def handler(event: dict, context) -> dict:
         or result.get("response")
         or str(result)
     )
+    answer = _strip_thinking(answer)
 
     logger.info("response: session=%s answer=%r", session_id, str(answer)[:120])
 

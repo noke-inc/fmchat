@@ -1,22 +1,26 @@
 """
 local_proxy.py — Local development proxy for the UI
 
-Bridges the static HTML UI (which calls POST http://localhost:8000/agent/chat)
-to the deployed AWS Bedrock AgentCore NokeAgent runtime via boto3 SigV4.
+Two modes — selected automatically based on LOCAL_AGENT_URL env var:
 
-Usage:
-    $env:AWS_PROFILE = "DeveloperAdmin-440124919638"
-    python local_proxy.py
+  LOCAL mode  (agentcore dev server):
+      $env:LOCAL_AGENT_URL = "http://localhost:8080/invocations"
+      python local_proxy.py
+      → POSTs directly to the local agentcore dev server.
+      → No AWS credentials needed for the agent call itself.
 
-Then open: http://localhost:8000
-The chat UI will be served at http://localhost:8000 and calls will be proxied
-to the NokeAgent AgentCore runtime automatically.
+  DEPLOYED mode  (AWS AgentCore Runtime via boto3 SigV4):
+      $env:AWS_PROFILE = "DeveloperAdmin-440124919638"
+      python local_proxy.py
+      → Calls the deployed NokeAgent AgentCore runtime.
+
+In both modes, open http://localhost:8000 in your browser.
 
 Endpoints:
     GET  /           → serves ui/index.html
     GET  /app.js     → serves ui/app.js
     GET  /styles.css → serves ui/styles.css
-    POST /agent/chat → proxies to AgentCore NokeAgent runtime
+    POST /agent/chat → proxies to agent (local dev server or deployed runtime)
 """
 
 import json
@@ -24,6 +28,9 @@ import os
 import sys
 import uuid
 import logging
+import re
+import urllib.request
+import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -36,41 +43,85 @@ logging.basicConfig(
 )
 log = logging.getLogger("proxy")
 
+
+def _strip_thinking(text: object) -> str:
+    """Remove model reasoning tags before returning text to the UI."""
+    cleaned = re.sub(r"<thinking>.*?</thinking>", "", str(text), flags=re.DOTALL | re.IGNORECASE)
+    return cleaned.strip()
+
 # ── Config ─────────────────────────────────────────────────────────────────────
-PROFILE   = os.getenv("AWS_PROFILE", "DeveloperAdmin-440124919638")
-REGION    = "us-east-2"
-AGENT_ARN = "arn:aws:bedrock-agentcore:us-east-2:440124919638:runtime/NokeAgent_NokeAgent-tm7hzt7fsf"
-PORT      = 8000
-UI_DIR    = Path(__file__).parent.parent / "ui"
+PROFILE         = os.getenv("AWS_PROFILE", "DeveloperAdmin-440124919638")
+REGION          = "us-east-2"
+AGENT_ARN       = "arn:aws:bedrock-agentcore:us-east-2:440124919638:runtime/NokeAgent_NokeAgent-tm7hzt7fsf"
+LOCAL_AGENT_URL = os.getenv("LOCAL_AGENT_URL", "").strip()   # e.g. http://localhost:8080/invocations
+PORT            = 8000
+UI_DIR          = Path(__file__).parent.parent / "ui"
 
-# ── boto3 AgentCore client ─────────────────────────────────────────────────────
-try:
-    session = boto3.Session(profile_name=PROFILE, region_name=REGION)
-    _client = session.client("bedrock-agentcore")
-    log.info("AWS session: profile=%s  region=%s", PROFILE, REGION)
-except Exception as e:
-    log.error("Failed to create boto3 session: %s", e)
-    sys.exit(1)
+# ── boto3 client — only initialised when NOT in local mode ────────────────────
+_client = None
+if not LOCAL_AGENT_URL:
+    try:
+        session = boto3.Session(profile_name=PROFILE, region_name=REGION)
+        _client = session.client("bedrock-agentcore")
+        log.info("DEPLOYED mode — AWS session: profile=%s  region=%s", PROFILE, REGION)
+    except Exception as e:
+        log.error("Failed to create boto3 session: %s", e)
+        sys.exit(1)
+else:
+    log.info("LOCAL mode — forwarding to agentcore dev server: %s", LOCAL_AGENT_URL)
 
 
-def call_agent(prompt: str, user_id: int = 1034747, session_id: str | None = None) -> dict:
-    """Invoke NokeAgent runtime and return parsed JSON response."""
+def call_agent(
+    prompt: str,
+    user_id: int = 1034747,
+    site_id: int = 2223363,
+    session_id: str | None = None,
+    authorization: str = "",
+) -> tuple[dict, str]:
+    """Call the agent and return (parsed_response, session_id)."""
     sid = session_id or f"ui-{uuid.uuid4().hex[:8]}"
-    payload = json.dumps({
+
+    agent_payload: dict = {
         "prompt":     prompt,
         "session_id": sid,
         "user_id":    user_id,
-    }).encode()
+        "site_id":    site_id,
+    }
+    # Forward the JWT so AGENT_AUTH_ENABLED=true works locally too.
+    if authorization:
+        agent_payload["authorization"] = authorization
 
-    log.info("→ AgentCore  session=%s  prompt=%r", sid, prompt[:80])
-    resp = _client.invoke_agent_runtime(
-        agentRuntimeArn=AGENT_ARN,
-        qualifier="DEFAULT",
-        payload=payload,
-    )
-    body = resp.get("response").read()
-    log.info("← AgentCore  status=%s  bytes=%d", resp.get("statusCode"), len(body))
-    return json.loads(body.decode()), sid
+    if LOCAL_AGENT_URL:
+        # ── Local agentcore dev server ─────────────────────────────────────────
+        body = json.dumps(agent_payload).encode()
+        req = urllib.request.Request(
+            LOCAL_AGENT_URL,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        log.info("→ local dev  session=%s  prompt=%r", sid, prompt[:80])
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            log.error("← local dev  HTTP %s: %s", e.code, raw[:200])
+        log.info("← local dev  bytes=%d", len(raw))
+        return json.loads(raw.decode()), sid
+
+    else:
+        # ── Deployed AgentCore Runtime (SigV4 via boto3) ──────────────────────
+        body = json.dumps(agent_payload).encode()
+        log.info("→ AgentCore  session=%s  prompt=%r", sid, prompt[:80])
+        resp = _client.invoke_agent_runtime(
+            agentRuntimeArn=AGENT_ARN,
+            qualifier="DEFAULT",
+            payload=body,
+        )
+        raw = resp.get("response").read()
+        log.info("← AgentCore  status=%s  bytes=%d", resp.get("statusCode"), len(raw))
+        return json.loads(raw.decode()), sid
 
 
 MIME = {
@@ -143,11 +194,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
         # Extract conversation_id to reuse as session_id for memory continuity
         session_id = req.get("conversation_id") or None
 
+        # Forward Authorization header so AGENT_AUTH_ENABLED=true is testable locally
+        authorization = (
+            self.headers.get("Authorization")
+            or self.headers.get("authorization")
+            or ""
+        )
+
         try:
             result, used_sid = call_agent(
                 prompt=message,
                 user_id=1034747,
                 session_id=session_id,
+                authorization=authorization,
             )
         except Exception as e:
             log.exception("AgentCore call failed: %s", e)
@@ -161,6 +220,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             or result.get("response")
             or str(result)
         )
+        answer = _strip_thinking(answer)
 
         response_payload = json.dumps({
             "answer":          answer,
@@ -189,9 +249,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     server = HTTPServer(("localhost", PORT), ProxyHandler)
     log.info("Proxy listening on http://localhost:%d", PORT)
-    log.info("Open browser → http://localhost:%d", PORT)
-    log.info("Agent ARN    → %s", AGENT_ARN)
-    log.info("AWS Profile  → %s", PROFILE)
+    log.info("Open browser    → http://localhost:%d", PORT)
+    if LOCAL_AGENT_URL:
+        log.info("Agent target    → LOCAL  %s", LOCAL_AGENT_URL)
+    else:
+        log.info("Agent target    → DEPLOYED  %s", AGENT_ARN)
+        log.info("AWS Profile     → %s", PROFILE)
     log.info("Press Ctrl+C to stop")
     try:
         server.serve_forever()
