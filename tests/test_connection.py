@@ -8,11 +8,19 @@ What it does:
   3. Prints row counts for v2_units, v2_locks scoped to TEST_USER_ID's sites
   4. Validates TEST_USER_ID through the same auth flow the MCP server uses
 
-Usage:
-  python test_connection.py
+Usage (from repo root):
+  cd eks && python ../tests/test_connection.py
+  # or from repo root with PYTHONPATH:
+  PYTHONPATH=eks python tests/test_connection.py
 """
 
 import sys
+import os
+
+# Resolve eks/mcp_server — run from eks/ directory or set PYTHONPATH=eks
+eks_dir = os.path.join(os.path.dirname(__file__), "..", "eks")
+sys.path.insert(0, os.path.abspath(eks_dir))
+
 import pymysql
 import pymysql.cursors
 

@@ -5,11 +5,10 @@ FastAPI application entry point.
 
 Endpoints
 ─────────
-GET  /health                   liveness probe
-GET  /mcp                      MCP SSE endpoint — LangChain agent discovers tools here
-POST /agent/chat               LangChain + Bedrock agent (new chat entry point)
-POST /api/query                Direct MCP tool call (JWT + API-key protected, for testing)
-GET  /                         Serves ui/index.html
+GET  /health        liveness probe
+GET  /mcp-http/     MCP streamable-http endpoint — AgentCore Gateway connects here
+GET  /mcp           MCP SSE endpoint — local/dev LangChain usage
+POST /api/query     Direct MCP tool call (JWT + API-key protected, for testing)
 """
 
 import logging
@@ -24,15 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
-from agent.routes import router as agent_router
 from mcp_server.auth.noke_jwt import validate_noke_token
-from mcp_server.config import (
-    AGENT_AUTH_ENABLED,
-    AGENT_MCP_URL,
-    BEDROCK_MODEL_ID,
-    BEDROCK_REGION,
-    MCP_API_KEY,
-)
+from mcp_server.config import MCP_API_KEY
 from mcp_server.tools import (
     tool_describe_table,
     tool_get_locks,
@@ -86,12 +78,9 @@ mcp_http_app = mcp.http_app(path="/", transport="streamable-http")
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="Noke Smart Entry — Agent + MCP Server",
-    description=(
-        "LangChain/Bedrock agent server with MCP SSE tool endpoint. "
-        "AGENT_AUTH_ENABLED=false skips JWT validation (current phase)."
-    ),
-    version="1.0.0",
+    title="Noke Smart Entry — MCP Server",
+    description="MCP tool server for AgentCore Gateway and local dev usage.",
+    version="3.0.0",
     lifespan=mcp_http_app.lifespan,
 )
 
@@ -113,9 +102,6 @@ class NoCacheStaticFiles(StaticFiles):
         response.headers["Expires"] = "0"
         return response
 
-# POST /agent/chat
-app.include_router(agent_router)
-
 # Gateway-compatible MCP endpoint (Streamable HTTP)
 # AgentCore Gateway target should point to: https://mcp.smartentry.noke.dev/mcp-http/
 app.mount("/mcp-http", mcp_http_app)
@@ -124,26 +110,18 @@ app.mount("/mcp-http", mcp_http_app)
 # Local agent URL remains: http://localhost:8000/mcp/sse
 app.mount("/mcp", mcp.sse_app())
 
-logger.info(
-    "Server config: model=%s region=%s auth_enabled=%s agent_mcp_url=%s",
-    BEDROCK_MODEL_ID, BEDROCK_REGION, AGENT_AUTH_ENABLED, AGENT_MCP_URL,
-)
+logger.info("MCP server starting — api_key_required=%s", bool(MCP_API_KEY))
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {
-        "status":       "ok",
-        "auth_enabled": AGENT_AUTH_ENABLED,
-        "model":        BEDROCK_MODEL_ID,
-        "region":       BEDROCK_REGION,
-    }
+    return {"status": "ok"}
 
 
 # ── Static UI ─────────────────────────────────────────────────────────────────
 # NOTE: mount LAST — catch-all "/" shadows any routes defined after it.
-# Only mounted when the ui/ directory actually exists (local dev only).
-# In EKS the container has no ui/ directory — only /agent/chat and /mcp/sse are needed.
+# Only mounted when the ui/ directory exists (local dev only).
+# In EKS the container has no ui/ directory.
 UI_DIR = Path(__file__).resolve().parent.parent.parent / "ui"
 
 

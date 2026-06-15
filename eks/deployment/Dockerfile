@@ -9,9 +9,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server package and agent (relative to eks/ build context)
+# Copy MCP server package only
 COPY mcp_server/ ./mcp_server/
-COPY agent/ ./agent/
 
 EXPOSE 8000
 

@@ -1,7 +1,0 @@
-{
-  "dependencies": ["."],
-  "graphs": {
-    "noke_agent": "./agent/graph.py:graph"
-  },
-  "env": ".env"
-}

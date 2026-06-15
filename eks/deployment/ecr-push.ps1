@@ -12,7 +12,7 @@
 #       aws ecr create-repository --repository-name noke-fm-mcp-server --region us-east-2
 
 param(
-    [string]$Tag = "V2.0.0"
+    [string]$Tag = "V3.0.0"
 )
 
 Set-StrictMode -Version Latest
@@ -24,7 +24,7 @@ $RepoName  = "noke-fm-mcp-server"
 $Registry  = "$AccountId.dkr.ecr.$Region.amazonaws.com"
 $FullImage = "$Registry/$RepoName`:$Tag"
 
-# Ensure we are in the eks/ directory (Dockerfile references mcp_server/ and agent/)
+# Ensure we are in the eks/ directory (Dockerfile references mcp_server/)
 if (-not (Test-Path "mcp_server/main.py")) {
     Write-Error "Run this script from the eks/ directory (where mcp_server/ lives)."
     exit 1

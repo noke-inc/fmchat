@@ -1,4 +1,4 @@
-"""Test script to invoke the NokeMCP Runtime directly."""
+"""Test script to invoke the NokeAgent Runtime directly."""
 import boto3
 import json
 import sys
@@ -25,23 +25,16 @@ for gw in gateways.get('gateways', []):
     gw_id = gw['gatewayId']
     print(f"  {name} - {status} - {gw_id}")
 
-# Try to invoke the NokeAgent runtime with an MCP initialize message
-print("\n=== Testing Runtime Invocation ===")
+# Target the NokeAgent runtime
+print("\n=== Testing NokeAgent Runtime Invocation ===")
 target_runtime = None
 for rt in runtimes.get('agentRuntimes', []):
-    if 'NokeMCP' in rt['agentRuntimeName']:
+    if 'NokeAgent' in rt['agentRuntimeName']:
         target_runtime = rt
         break
 
 if not target_runtime:
-    print("NokeMCP runtime not found. Checking NokeAgent...")
-    for rt in runtimes.get('agentRuntimes', []):
-        if 'NokeAgent' in rt['agentRuntimeName']:
-            target_runtime = rt
-            break
-
-if not target_runtime:
-    print("No suitable runtime found!")
+    print("NokeAgent runtime not found!")
     sys.exit(1)
 
 print(f"Target runtime: {target_runtime['agentRuntimeName']} ({target_runtime['status']})")

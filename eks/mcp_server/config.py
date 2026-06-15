@@ -36,22 +36,4 @@ NOKE_JWT_SECRET: str = os.getenv("NOKE_JWT_SECRET", "")
 MCP_API_KEY: str     = os.getenv("MCP_API_KEY", "")
 MCP_BASE_URL: str    = os.getenv("MCP_BASE_URL", "https://mcp.smartentry.noke.dev")
 
-# --- Bedrock (LangChain agent LLM) ---
-# Credentials come from the EKS pod IAM role — no key needed.
-BEDROCK_REGION:   str = os.getenv("BEDROCK_REGION",   "us-east-2")
-BEDROCK_MODEL_ID: str = os.getenv("BEDROCK_MODEL_ID", "us.amazon.nova-micro-v1:0")
 
-# --- Agent ---
-# AGENT_AUTH_ENABLED=false  → no JWT check (current phase)
-# AGENT_AUTH_ENABLED=true   → validates NOKE JWT, extracts user context
-AGENT_AUTH_ENABLED: bool = os.getenv("AGENT_AUTH_ENABLED", "false").lower() == "true"
-
-# MCP server URL the agent uses to reach the /mcp SSE tool endpoint.
-# Locally this is http://localhost:8000; in EKS it is the internal cluster URL
-# (or the public URL when running the agent outside the cluster).
-AGENT_MCP_URL: str = os.getenv("AGENT_MCP_URL", "http://localhost:8000/mcp/sse")
-
-# AgentCore Gateway URL (streamable-http with SigV4 auth).
-# When set, the agent calls tools via the Gateway instead of direct SSE.
-AGENT_GATEWAY_URL: str = os.getenv("AGENT_GATEWAY_URL", "")
-AGENT_GATEWAY_REGION: str = os.getenv("AGENT_GATEWAY_REGION", "us-east-2")

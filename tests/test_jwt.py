@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-import json, base64, hashlib, time, os
+# Usage (from repo root):
+#   cd eks && python ../tests/test_jwt.py
+#   # or: PYTHONPATH=eks python tests/test_jwt.py
+import json, base64, hashlib, time, os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "eks")))
 os.environ["NOKE_JWT_SECRET"] = "dISRW8strjOJ0veAj8jg3pgnbmEU3vXmFx4rGx0aloh9eCaYeGzLN09FWwYXX3yjK2kygbUmuAZZTtSrNFIVb62dfwK97K7fe5yI4dGd4YV8dwTvgfKQNULAar8QBHiO"
 
 SECRET = os.environ["NOKE_JWT_SECRET"]

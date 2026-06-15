@@ -1,3 +1,0 @@
-NAME                       READY   STATUS        RESTARTS   AGE
-noke-mcp-557b54c54-b9lf4   1/1     Running       0          65s
-noke-mcp-67c675fdb-h2nwz   1/1     Terminating   0          8d
