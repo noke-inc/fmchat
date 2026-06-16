@@ -39,3 +39,4 @@ agentcore_targets_backup.json
 recent_logs.txt
 synth_output.txt
 
+evaluation/results/*
