@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Noke Agent Evaluation Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Agent under test ─────────────────────────────────────────────────────────
+# Change model_id here to evaluate the agent on a different Bedrock LLM.
+agent:
+  model_id:     "us.amazon.nova-micro-v1:0"       # LLM used by the agent (for documentation)
+  endpoint_arn: "arn:aws:bedrock-agentcore:us-east-2:440124919638:runtime/NokeAgent_NokeAgent-tm7hzt7fsf"
+  region:       "us-east-2"
+  qualifier:    "DEFAULT"
+  # Context injected with every evaluation request
+  user_id:  1034747
+  site_id:  2223362
+
+# ── Judge LLM ────────────────────────────────────────────────────────────────
+# A separate (typically more capable) model used ONLY to score responses.
+# Change model_id here to use a different judge without touching the agent.
+judge:
+  model_id:    "us.amazon.nova-lite-v1:0"   # Smarter model → better scoring
+  region:      "us-east-2"
+  temperature: 0                             # Keep at 0 for deterministic scores
+  instructions: |
+    You are an expert evaluator for an AI assistant that manages smart entry
+    systems (locks, units, and sites). Score each response on the three
+    metrics below from 0.0 to 1.0.
+
+    CORRECTNESS  — Does the answer match the expected ground truth?
+                   1.0 = precise match, 0.5 = partially correct, 0.0 = wrong
+    HELPFULNESS  — Is the answer clear, concise, and useful to the user?
+                   1.0 = excellent, 0.5 = somewhat useful, 0.0 = unhelpful
+    FAITHFULNESS — Does the answer avoid hallucination / unsupported claims?
+                   1.0 = grounded in facts, 0.0 = fabricated content
+
+# ── Metrics and their weights toward the final weighted score ─────────────────
+metrics:
+  - name:        CORRECTNESS
+    weight:      0.5
+  - name:        HELPFULNESS
+    weight:      0.3
+  - name:        FAITHFULNESS
+    weight:      0.2
+
+# ── Pass/Fail threshold (weighted score) ─────────────────────────────────────
+pass_threshold: 0.7
+
+# ── Output options ────────────────────────────────────────────────────────────
+output:
+  results_dir:  "results"      # saved under evaluation/results/<run_id>/
+  html_report:  true           # generate an HTML report after each run
+  open_browser: true           # auto-open the report in the default browser

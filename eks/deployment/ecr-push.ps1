@@ -3,7 +3,7 @@
 #
 # Usage (run from the eks/ directory):
 #   .\deployment\ecr-push.ps1
-#   .\deployment\ecr-push.ps1 -Tag "V2.0.1"
+#   .\deployment\ecr-push.ps1 -Tag "V3.0.2"
 #
 # Prerequisites:
 #   - AWS CLI configured with ECR push permissions
@@ -12,7 +12,7 @@
 #       aws ecr create-repository --repository-name noke-fm-mcp-server --region us-east-2
 
 param(
-    [string]$Tag = "V3.0.0"
+    [string]$Tag = "V3.0.2"
 )
 
 Set-StrictMode -Version Latest
