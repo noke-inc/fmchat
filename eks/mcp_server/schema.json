@@ -1,0 +1,185 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "scope": "MVP iteration 1",
+    "tables_allowed": ["v2_units", "users", "users_roles", "sites"],
+    "tables_mandatory_dependency": ["users_roles", "sites"],
+    "tables_base": ["v2_units", "users"],
+    "note": "users_roles is required to resolve user→site scope. sites is required to resolve site_id→site_name. No other tables are permitted in iteration 1."
+  },
+
+  "physical_schema": {
+    "v2_units": {
+      "table": "v2_units",
+      "primary_key": "id",
+      "scope_column": "site_id",
+      "columns": {
+        "name":          { "type": "varchar(40)",  "nullable": false, "expose": true },
+        "rental_state":  { "type": "varchar(20)",  "nullable": false, "expose": true },
+        "access_type":   { "type": "varchar(45)",  "nullable": false, "expose": true },
+        "details_comments": { "type": "varchar(128)", "nullable": false, "expose": true },
+        "details_width": { "type": "float",        "nullable": false, "expose": true },
+        "details_depth": { "type": "float",        "nullable": false, "expose": true },
+        "details_price": { "type": "float",        "nullable": false, "expose": true },
+        "created_date":  { "type": "timestamp",    "nullable": false, "expose": true },
+        "site_id":       { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
+        "id":            { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
+        "uuid":          { "type": "varchar(36)",  "nullable": true,  "expose": false, "sensitive": true },
+        "user_id":       { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
+        "company_id":    { "type": "int",          "nullable": true,  "expose": false, "sensitive": true },
+        "company_uuid":  { "type": "varchar(36)",  "nullable": false, "expose": false, "sensitive": true }
+      }
+    },
+    "users": {
+      "table": "users",
+      "primary_key": "id",
+      "columns": {
+        "first_name":   { "type": "varchar(45)", "nullable": false, "expose": true },
+        "last_name":    { "type": "varchar(45)", "nullable": false, "expose": true },
+        "email":        { "type": "varchar(45)", "nullable": false, "expose": true },
+        "type":         { "type": "varchar(45)", "nullable": false, "expose": true },
+        "state":        { "type": "varchar(45)", "nullable": false, "expose": true },
+        "created_date": { "type": "timestamp",   "nullable": false, "expose": true },
+        "default_site_id": { "type": "int",      "nullable": false, "expose": false, "sensitive": true },
+        "company_id":   { "type": "int",         "nullable": true,  "expose": false, "sensitive": true },
+        "company_uuid": { "type": "varchar(36)", "nullable": false, "expose": false, "sensitive": true },
+        "id":           { "type": "int",         "nullable": false, "expose": false, "sensitive": true },
+        "password":     { "type": "varchar(200)","nullable": true,  "expose": false, "sensitive": true },
+        "pin":          { "type": "varchar(10)", "nullable": false, "expose": false, "sensitive": true },
+        "session_salt": { "type": "varchar(65)", "nullable": false, "expose": false, "sensitive": true }
+      }
+    },
+    "users_roles": {
+      "table": "users_roles",
+      "primary_key": "id",
+      "note": "Mandatory dependency table — used only to resolve user_id → site_ids. Not directly queryable by tools.",
+      "columns": {
+        "user_id":  { "type": "int", "nullable": false, "expose": false, "sensitive": true },
+        "site_id":  { "type": "int", "nullable": false, "expose": false, "sensitive": true }
+      }
+    },
+    "sites": {
+      "table": "sites",
+      "primary_key": "id",
+      "note": "Mandatory dependency table — used only to resolve site_id → site name.",
+      "columns": {
+        "name": { "type": "varchar(100)", "nullable": false, "expose": true },
+        "id":   { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
+        "uuid": { "type": "varchar(36)",  "nullable": true,  "expose": false, "sensitive": true }
+      }
+    }
+  },
+
+  "semantic_layer": {
+    "entities": {
+      "unit": {
+        "physical_table": "v2_units",
+        "aliases": ["unit", "units", "storage unit", "storage units", "space", "spaces", "locker", "lockers", "bay", "bays"],
+        "default_exposed_columns": ["name", "rental_state", "site_name"],
+        "description": "A rentable storage unit or space managed at a site."
+      },
+      "user": {
+        "physical_table": "users",
+        "aliases": ["user", "users", "customer", "customers", "member", "members", "tenant", "tenants"],
+        "default_exposed_columns": ["first_name", "last_name", "email", "state"],
+        "description": "A registered user of the Noke smart entry system."
+      },
+      "site": {
+        "physical_table": "sites",
+        "aliases": ["site", "sites", "facility", "facilities", "location", "locations", "property", "properties"],
+        "default_exposed_columns": ["name"],
+        "description": "A physical property or facility managed in the Noke system."
+      }
+    },
+    "columns": {
+      "rental_state": {
+        "aliases": ["status", "state", "rental status", "availability", "occupancy"],
+        "enum_map": {
+          "free":       "available",
+          "open":       "available",
+          "empty":      "available",
+          "vacant":     "available",
+          "occupied":   "in use",
+          "rented":     "in use",
+          "taken":      "in use",
+          "active":     "in use"
+        },
+        "allowed_values": ["available", "in use", "repo"]
+      },
+      "name": {
+        "aliases": ["unit name", "unit id", "space name", "locker name", "site name", "facility name", "label"]
+      },
+      "first_name": { "aliases": ["first name", "given name"] },
+      "last_name":  { "aliases": ["last name", "family name", "surname"] },
+      "email":      { "aliases": ["email address", "e-mail"] },
+      "state":      { "aliases": ["user status", "account state", "account status", "active"] }
+    }
+  },
+
+  "aggregation_metadata": {
+    "allowed_aggregations": {
+      "count": {
+        "sql_function": "COUNT(*)",
+        "output_column": "count",
+        "default_filters": {},
+        "note": "No filters applied by default — counts all rows in scope."
+      },
+      "sum": {
+        "sql_function": "SUM({column})",
+        "requires_column": true,
+        "output_column": "total",
+        "allowed_columns": ["details_price", "details_width", "details_depth"]
+      },
+      "avg": {
+        "sql_function": "AVG({column})",
+        "requires_column": true,
+        "output_column": "average",
+        "allowed_columns": ["details_price", "details_width", "details_depth"]
+      }
+    },
+    "allowed_group_by": {
+      "v2_units": ["rental_state", "access_type", "site_name"],
+      "users": ["type", "state"]
+    },
+    "default_sort": {
+      "aggregation": { "column": "count", "direction": "DESC", "tiebreak": "name ASC" },
+      "search":      { "column": "name",  "direction": "ASC" }
+    },
+    "pagination": {
+      "default_limit": 50,
+      "max_limit": 200,
+      "min_limit": 1
+    }
+  },
+
+  "relationships": {
+    "v2_units_to_sites": {
+      "from_table": "v2_units",
+      "from_column": "site_id",
+      "to_table": "sites",
+      "to_column": "id",
+      "join_type": "LEFT",
+      "purpose": "Resolve site name for units"
+    },
+    "users_to_sites_via_roles": {
+      "from_table": "users",
+      "via_table": "users_roles",
+      "via_from_column": "user_id",
+      "via_to_column": "site_id",
+      "to_table": "sites",
+      "to_column": "id",
+      "join_type": "INNER",
+      "purpose": "Resolve sites accessible to a user — used for data scoping only"
+    }
+  },
+
+  "safety": {
+    "allowed_operators": ["=", "!=", ">", "<", ">=", "<=", "IN", "NOT IN", "BETWEEN", "LIKE"],
+    "max_join_depth": 2,
+    "max_limit": 200,
+    "query_timeout_seconds": 10,
+    "allowed_statement_types": ["SELECT"],
+    "parameterized_sql_required": true,
+    "deny_columns": ["password", "pin", "session_salt", "pin_expiration", "password_url"]
+  }
+}

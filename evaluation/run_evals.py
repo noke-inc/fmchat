@@ -68,10 +68,11 @@ def invoke_agent(cfg: dict, input_text: str, session_id: str) -> str:
     client = boto3.client("bedrock-agentcore", region_name=agent_cfg["region"])
 
     payload = json.dumps({
-        "prompt":     input_text,
-        "session_id": session_id,
-        "user_id":    agent_cfg.get("user_id", 1034747),
-        "site_id":    agent_cfg.get("site_id"),
+        "prompt":        input_text,
+        "session_id":    session_id,
+        "user_id":       agent_cfg.get("user_id", 1034747),
+        "site_id":       agent_cfg.get("site_id"),
+        "company_uuid":  agent_cfg.get("company_uuid"),
     }).encode()
 
     resp = client.invoke_agent_runtime(

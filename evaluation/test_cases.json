@@ -12,5 +12,61 @@
     "input":      "Show me all my units",
     "groundTruth": "The agent should list the units available for the user, including unit details such as names and rental status.",
     "tags": ["units", "list"]
+  },
+  {
+    "scenarioId": "TC-003",
+    "intent":     "locks",
+    "input":      "How many locks do I have?",
+    "groundTruth": "The agent should return a numeric count of locks associated with the user's account.",
+    "tags": ["locks", "count"]
+  },
+  {
+    "scenarioId": "TC-004",
+    "intent":     "locks",
+    "input":      "List all the locks in my system",
+    "groundTruth": "The agent should return a list of locks with their names. Its okay with unclear lock names as long as it is a list of locks. ",
+    "tags": ["locks", "list"]
+  },
+  {
+    "scenarioId": "TC-005",
+    "intent":     "locks_to_units",
+    "input":      "Which locks are assigned to my units?",
+    "groundTruth": "The agent should return a mapping showing which locks are associated with which units. Its okay with unclear names.",
+    "tags": ["locks", "units", "mapping"]
+  },
+  {
+    "scenarioId": "TC-006",
+    "intent":     "sites",
+    "input":      "What sites do I manage?",
+    "groundTruth": "The agent should return a count and site name of sites associated with the user's company.",
+    "tags": ["sites", "count"]
+  },
+  {
+    "scenarioId": "TC-007",
+    "intent":     "sites",
+    "input":      "How many sites are there?",
+    "groundTruth": "The agent should return a count of sites associated with the user's company.",
+    "tags": ["sites", "count"]
+  },
+  {
+    "scenarioId": "TC-008",
+    "intent":     "units",
+    "input":      "Can you tell me the total number of units I manage?",
+    "groundTruth": "The agent should respond with the total count of units for the user.",
+    "tags": ["units", "count", "rephrased"]
+  },
+  {
+    "scenarioId": "TC-009",
+    "intent":     "locks",
+    "input":      "Give me a count of all locks",
+    "groundTruth": "The agent should return the total number of locks for the user.",
+    "tags": ["locks", "count", "rephrased"]
+  },
+  {
+    "scenarioId": "TC-010",
+    "intent":     "out_of_scope",
+    "input":      "What is the weather today?",
+    "groundTruth": "The agent should politely decline and explain it only handles smart entry questions about units, locks, and sites.",
+    "tags": ["out-of-scope", "graceful-decline"]
   }
 ]

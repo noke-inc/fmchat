@@ -10,8 +10,9 @@ agent:
   region:       "us-east-2"
   qualifier:    "DEFAULT"
   # Context injected with every evaluation request
-  user_id:  1032127
-  site_id:  1001009
+  user_id:      1032127
+  site_id:      1001009
+  company_uuid: 1000142
 
 # ── Judge LLM ────────────────────────────────────────────────────────────────
 # A separate (typically more capable) model used ONLY to score responses.

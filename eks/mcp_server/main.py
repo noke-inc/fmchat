@@ -26,11 +26,8 @@ from pydantic import BaseModel, Field
 from mcp_server.auth.noke_jwt import validate_noke_token
 from mcp_server.config import MCP_API_KEY
 from mcp_server.tools import (
-    tool_describe_table,
-    tool_get_locks,
-    tool_get_locks_to_units,
-    tool_get_sites_by_company,
-    tool_get_units,
+    tool_aggregate_query,
+    tool_search_records,
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -47,38 +44,74 @@ mcp = FastMCP("Noke Smart Entry MCP")
 
 
 @mcp.tool()
-def get_units(user_id: int, limit: int = 100) -> list[dict]:
-    """Return storage units scoped to the sites assigned to this user."""
-    logger.debug("MCP tool: get_units user_id=%s limit=%s", user_id, limit)
-    return tool_get_units(user_id=user_id, limit=limit)
+def aggregate_query(
+    user_id: int,
+    entity: str,
+    aggregation: str,
+    agg_column: str | None = None,
+    group_by: list[str] | None = None,
+    filters: list[dict] | None = None,
+) -> dict:
+    """
+    Run a deterministic aggregation (count/sum/avg) over an entity.
+
+    entity       — semantic name: 'unit' | 'user' | 'site'
+    aggregation  — 'count' | 'sum' | 'avg'
+    agg_column   — required for sum/avg (e.g. 'details_price')
+    group_by     — optional list of columns to group by (e.g. ['rental_state'])
+    filters      — optional list of {column, operator, value} dicts
+
+    Returns {results, corrections, metadata} or {error, code} on failure.
+    """
+    logger.debug(
+        "MCP tool: aggregate_query user_id=%s entity=%s aggregation=%s group_by=%s filters=%s",
+        user_id, entity, aggregation, group_by, filters,
+    )
+    return tool_aggregate_query(
+        user_id=user_id,
+        entity=entity,
+        aggregation=aggregation,
+        agg_column=agg_column,
+        group_by=group_by,
+        filters=filters,
+    )
 
 
 @mcp.tool()
-def get_locks(user_id: int, limit: int = 100) -> list[dict]:
-    """Return locks scoped to the sites assigned to this user."""
-    logger.debug("MCP tool: get_locks user_id=%s limit=%s", user_id, limit)
-    return tool_get_locks(user_id=user_id, limit=limit)
+def search_records(
+    user_id: int,
+    entity: str,
+    columns: list[str] | None = None,
+    filters: list[dict] | None = None,
+    sort_column: str | None = None,
+    sort_direction: str | None = None,
+    limit: int = 50,
+) -> dict:
+    """
+    Retrieve records for an entity scoped to the calling user's sites.
 
+    entity         — semantic name: 'unit' | 'user' | 'site'
+    columns        — columns to return (None = entity defaults)
+    filters        — optional list of {column, operator, value} dicts
+    sort_column    — column to sort by (None = default)
+    sort_direction — 'ASC' | 'DESC' (None = default)
+    limit          — max rows to return (1-200, default 50)
 
-@mcp.tool()
-def get_locks_to_units(user_id: int, limit: int = 100) -> list[dict]:
-    """Return lock-to-unit assignments scoped to the sites assigned to this user."""
-    logger.debug("MCP tool: get_locks_to_units user_id=%s limit=%s", user_id, limit)
-    return tool_get_locks_to_units(user_id=user_id, limit=limit)
-
-
-@mcp.tool()
-def describe_table(table: str) -> list[dict]:
-    """Return column metadata for the given table name."""
-    logger.debug("MCP tool: describe_table table=%s", table)
-    return tool_describe_table(table)
-
-
-@mcp.tool()
-def get_sites_by_company(company_uuid: str) -> list[dict]:
-    """Return all sites (id, name) for the given company_uuid."""
-    logger.debug("MCP tool: get_sites_by_company company_uuid=%s", company_uuid)
-    return tool_get_sites_by_company(company_uuid=company_uuid)
+    Returns {results, corrections, metadata} or {error, code} on failure.
+    """
+    logger.debug(
+        "MCP tool: search_records user_id=%s entity=%s columns=%s filters=%s limit=%s",
+        user_id, entity, columns, filters, limit,
+    )
+    return tool_search_records(
+        user_id=user_id,
+        entity=entity,
+        columns=columns,
+        filters=filters,
+        sort_column=sort_column,
+        sort_direction=sort_direction,
+        limit=limit,
+    )
 
 
 # Build streamable MCP app once so we can reuse its lifespan in the parent FastAPI app.
@@ -134,18 +167,19 @@ UI_DIR = Path(__file__).resolve().parent.parent.parent / "ui"
 
 
 # ── Direct query endpoint (JWT + API-key protected, kept for direct testing) ──
-TOOL_MAP = {
-    "get_units":          tool_get_units,
-    "get_locks":          tool_get_locks,
-    "get_locks_to_units": tool_get_locks_to_units,
-}
-
 
 class QueryRequest(BaseModel):
-    tool:       str        = Field(..., description="get_units | get_locks | get_locks_to_units | describe_table")
-    user_token: str | None = Field(None, description="NOKE JWT (fallback when no Authorization header)")
-    limit:      int        = Field(100, ge=1, le=1000)
-    table:      str | None = Field(None, description="Required for describe_table")
+    tool:           str             = Field(..., description="aggregate_query | search_records")
+    entity:         str             = Field(..., description="Semantic entity: 'unit' | 'user' | 'site'")
+    user_token:     str | None      = Field(None, description="NOKE JWT (fallback when no Authorization header)")
+    aggregation:    str | None      = Field(None, description="count | sum | avg — required for aggregate_query")
+    agg_column:     str | None      = Field(None, description="Column for sum/avg")
+    group_by:       list[str] | None = Field(None, description="Columns to group by")
+    columns:        list[str] | None = Field(None, description="Columns to return for search_records")
+    filters:        list[dict] | None = Field(None, description="List of {column, operator, value} dicts")
+    sort_column:    str | None      = Field(None)
+    sort_direction: str | None      = Field(None, description="ASC | DESC")
+    limit:          int             = Field(50, ge=1, le=200)
 
 
 class QueryResponse(BaseModel):
@@ -187,17 +221,27 @@ def query(
     logger.info("/api/query user_id=%s site_id=%s tool=%s", user_id, site_id, req.tool)
 
     try:
-        if req.tool == "describe_table":
-            if not req.table:
-                raise HTTPException(status_code=400, detail="'table' required for describe_table.")
-            data = tool_describe_table(req.table)
-        elif req.tool in TOOL_MAP:
-            data = TOOL_MAP[req.tool](user_id=user_id, limit=req.limit)
+        if req.tool == "aggregate_query":
+            if not req.aggregation:
+                raise HTTPException(status_code=400, detail="'aggregation' required for aggregate_query.")
+            result = tool_aggregate_query(
+                user_id=user_id, entity=req.entity, aggregation=req.aggregation,
+                agg_column=req.agg_column, group_by=req.group_by, filters=req.filters,
+            )
+        elif req.tool == "search_records":
+            result = tool_search_records(
+                user_id=user_id, entity=req.entity, columns=req.columns,
+                filters=req.filters, sort_column=req.sort_column,
+                sort_direction=req.sort_direction, limit=req.limit,
+            )
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unknown tool '{req.tool}'. Available: {list(TOOL_MAP) + ['describe_table']}",
+                detail=f"Unknown tool '{req.tool}'. Available: aggregate_query, search_records",
             )
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        data = result.get("results", [])
         return QueryResponse(
             tool=req.tool, user_id=user_id, site_id=site_id,
             row_count=len(data), data=data,

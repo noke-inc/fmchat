@@ -44,6 +44,12 @@ logging.basicConfig(
 )
 log = logging.getLogger("proxy")
 
+# Test user override for local proxy runs.
+# If LOCAL_TEST_USER_ID is set, it takes precedence over UI/JWT user_id in both
+# LOCAL and DEPLOYED proxy modes so one place controls test identity.
+LOCAL_TEST_USER_ID = int(os.getenv("LOCAL_TEST_USER_ID", "1032127"))
+FORCE_TEST_USER_ID = "LOCAL_TEST_USER_ID" in os.environ
+
 
 def _strip_thinking(text: object) -> str:
     """Remove model reasoning tags before returning text to the UI."""
@@ -75,8 +81,14 @@ def _extract_context(req_body: dict, authorization: str) -> tuple[int, int | Non
     jwt_site_id     = claims.get("currentSite")
     jwt_company     = str(claims.get("company", "")) or None
 
-    # 2. Request body wins over JWT (allows test overrides from the UI)
-    user_id     = int(req_body.get("user_id") or jwt_user_id or 1034747)
+    # 2. If LOCAL_TEST_USER_ID is explicitly provided, force it in both modes.
+    if FORCE_TEST_USER_ID:
+        user_id = LOCAL_TEST_USER_ID
+    # 3. Otherwise, keep previous behavior.
+    elif LOCAL_AGENT_URL:
+        user_id = LOCAL_TEST_USER_ID
+    else:
+        user_id = int(req_body.get("user_id") or jwt_user_id or LOCAL_TEST_USER_ID)
     site_id_raw = req_body.get("site_id") or jwt_site_id
     site_id     = int(site_id_raw) if site_id_raw is not None else None
     company_uuid = str(req_body.get("company_uuid") or jwt_company or "")
@@ -108,7 +120,7 @@ else:
 
 def call_agent(
     prompt: str,
-    user_id: int = 1034747,
+    user_id: int = LOCAL_TEST_USER_ID,
     site_id: int | None = None,
     company_uuid: str | None = None,
     session_id: str | None = None,
