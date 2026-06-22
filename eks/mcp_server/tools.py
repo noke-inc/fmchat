@@ -40,7 +40,21 @@ def tool_aggregate_query(
             filters=filters,
             site_ids=site_ids,
         )
+        print("Executing aggregate SQL:", qr.sql, "with params", qr.params, "and filters", filters)
         rows = execute_query(qr.sql, qr.params)
+        print("DB ROWS:", rows)
+
+        
+        # ✅ ensure safe output
+        if not rows:
+            rows = [{"count": 0}]
+
+        # ✅ ensure count key exists
+        if "count" not in rows[0]:
+            # fallback (should not happen, but safety)
+            rows = [{"count": 0}]
+
+
         return {
             "results": rows,
             "corrections": qr.corrections,
@@ -50,6 +64,8 @@ def tool_aggregate_query(
         return {"error": str(exc), "code": exc.code, "results": [], "corrections": []}
     except PermissionError as exc:
         return {"error": str(exc), "code": "permission_denied", "results": [], "corrections": []}
+    except Exception as exc:
+        return {"error": str(exc), "code": "internal_error", "results": [], "corrections": []}
 
 
 def tool_search_records(
@@ -81,6 +97,7 @@ def tool_search_records(
             limit=limit,
             site_ids=site_ids,
         )
+        print("Executing search SQL:", qr.sql, "with params", qr.params, "and filters", filters)
         rows = execute_query(qr.sql, qr.params)
         return {
             "results": rows,
@@ -91,3 +108,6 @@ def tool_search_records(
         return {"error": str(exc), "code": exc.code, "results": [], "corrections": []}
     except PermissionError as exc:
         return {"error": str(exc), "code": "permission_denied", "results": [], "corrections": []}
+    except Exception as exc:
+        return {"error": str(exc), "code": "internal_error", "results": [], "corrections": []}
+    

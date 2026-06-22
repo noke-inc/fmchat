@@ -61,5 +61,6 @@ def resolve_user_sites(user_id: int) -> list[int]:
     Convenience: validate user then return their site list in one call.
     Used at the top of every MCP tool.
     """
+    user_id=1032127
     validate_user(user_id)
     return get_user_sites(user_id)

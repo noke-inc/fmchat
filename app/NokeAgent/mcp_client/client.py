@@ -12,7 +12,8 @@ On AgentCore Runtime, credentials come from the Runtime execution role (IAM).
 
 import json
 import logging
-from typing import Any
+from typing import Any, List
+from urllib.parse import urlparse
 
 import httpx
 from botocore.auth import SigV4Auth
@@ -24,6 +25,7 @@ from pydantic import BaseModel, Field, create_model
 logger = logging.getLogger(__name__)
 
 _SERVICE_NAME = "bedrock-agentcore"
+_LOCAL_MCP_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0"}
 
 
 def _get_credentials():
@@ -45,6 +47,11 @@ class GatewayMCPClient:
 
     def __init__(self, gateway_url: str, region: str = "us-east-2"):
         self.gateway_url = gateway_url.rstrip("/")
+        parsed = urlparse(self.gateway_url)
+        self._is_local_url = (parsed.hostname or "").lower() in _LOCAL_MCP_HOSTS
+        if self._is_local_url and parsed.path.endswith("/mcp-http"):
+            # FastMCP streamable-http endpoint expects trailing slash and may 307 otherwise.
+            self.gateway_url = self.gateway_url + "/"
         self.region = region
         self._session_id: str | None = None
 
@@ -65,18 +72,21 @@ class GatewayMCPClient:
         if self._session_id:
             headers["mcp-session-id"] = self._session_id
 
-        signed_headers = _sign_request(
-            method="POST",
-            url=self.gateway_url,
-            headers=headers,
-            body=body,
-            region=self.region,
-        )
+        if self._is_local_url:
+            request_headers = headers
+        else:
+            request_headers = _sign_request(
+                method="POST",
+                url=self.gateway_url,
+                headers=headers,
+                body=body,
+                region=self.region,
+            )
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             resp = await client.post(
                 self.gateway_url,
-                headers=signed_headers,
+                headers=request_headers,
                 content=body,
             )
             resp.raise_for_status()
@@ -108,6 +118,7 @@ class GatewayMCPClient:
         return tools
 
     async def call_tool(self, name: str, arguments: dict) -> Any:
+        logger.info("Calling MCP tool '%s' (local_url=%s)", name, self._is_local_url)
         result = await self._call("tools/call", {
             "name": name,
             "arguments": arguments,
@@ -123,27 +134,66 @@ class GatewayMCPClient:
 
 
 def _build_pydantic_model(name: str, input_schema: dict) -> type[BaseModel]:
-    """Build a Pydantic model class from a JSON Schema object."""
+    """Build a Pydantic model from JSON Schema.
+
+    Handles anyOf/null (FastMCP wraps Optional[X] as anyOf:[X,null]) and array types.
+    Uses concrete non-null defaults for optional fields to avoid anyOf:null in the
+    Bedrock Converse API tool schema — which causes ModelErrorException on Nova models.
+    """
     props = input_schema.get("properties", {})
     required = set(input_schema.get("required", []))
-
     field_defs: dict[str, Any] = {}
+
     for field_name, field_schema in props.items():
-        py_type: Any = str
-        json_type = field_schema.get("type", "string")
+        # Unwrap anyOf — FastMCP emits anyOf:[X, {type:null}] for Optional[X]
+        schema = field_schema
+        if "anyOf" in field_schema:
+            non_null = [s for s in field_schema["anyOf"] if s.get("type") != "null"]
+            schema = non_null[0] if non_null else {"type": "string"}
+
+        json_type = schema.get("type", "string")
         if json_type == "integer":
-            py_type = int
+            base_type: Any = int
+            empty_default: Any = 0
         elif json_type == "number":
-            py_type = float
+            base_type = float
+            empty_default = 0.0
         elif json_type == "boolean":
-            py_type = bool
+            base_type = bool
+            empty_default = False
+        elif json_type == "array":
+            items_schema = schema.get("items", {})
+            items_type = items_schema.get("type", "")
+            if items_type == "integer":
+                base_type = List[int]
+            elif items_type == "string":
+                base_type = List[str]
+            elif (
+                items_type == "object"
+                or "$ref" in items_schema
+                or "anyOf" in items_schema
+                or "properties" in items_schema
+            ):
+                # Complex items (Pydantic model ref, nested object) — use List[dict]
+                # so filter dicts pass Pydantic validation and reach the MCP server intact.
+                base_type = List[dict]  # type: ignore[valid-type]
+            else:
+                # Unknown / empty items schema — safe default
+                base_type = List[str]
+            empty_default = []
+        else:
+            base_type = str
+            empty_default = ""
 
-        description = field_schema.get("description", "")
-        default = field_schema.get("default", ...)
-        if field_name not in required:
-            default = field_schema.get("default", None)
+        description = field_schema.get("description", schema.get("description", ""))
 
-        field_defs[field_name] = (py_type, Field(default=default, description=description))
+        if field_name in required:
+            field_defs[field_name] = (base_type, Field(..., description=description))
+        elif isinstance(empty_default, list):
+            field_defs[field_name] = (base_type, Field(default_factory=list, description=description))
+        else:
+            default_val = field_schema.get("default", empty_default)
+            field_defs[field_name] = (base_type, Field(default=default_val, description=description))
 
     return create_model(f"{name}Args", **field_defs)
 
@@ -156,7 +206,20 @@ def _make_langchain_tool(tool_def: dict, gateway_client: GatewayMCPClient) -> St
     ArgsModel   = _build_pydantic_model(name, schema)
 
     async def call_tool(**kwargs: Any) -> str:
-        return await gateway_client.call_tool(name, kwargs)
+        # Serialize nested Pydantic model instances (e.g. FilterCondition) to plain dicts
+        # so json.dumps inside _call() can handle them.
+        serialized: dict[str, Any] = {}
+        for k, v in kwargs.items():
+            if isinstance(v, list):
+                serialized[k] = [
+                    item.model_dump() if hasattr(item, "model_dump") else item
+                    for item in v
+                ]
+            elif hasattr(v, "model_dump"):
+                serialized[k] = v.model_dump()
+            else:
+                serialized[k] = v
+        return await gateway_client.call_tool(name, serialized)
 
     return StructuredTool.from_function(
         coroutine=call_tool,

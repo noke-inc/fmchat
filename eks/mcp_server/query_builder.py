@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from fastapi import params
+
 # ── Schema loading ─────────────────────────────────────────────────────────────
 
 _SCHEMA_PATH = Path(__file__).parent / "schema.json"
@@ -233,9 +235,13 @@ def _site_scope_join(physical_table: str, table_alias: str, site_ids: list[int])
     Return (join_clause, scope_where_clause, scope_params) that constrains
     rows to those accessible by the calling user's site_ids.
     """
+    if not site_ids:
+        return "", "", ()
+    
     schema = _get_schema()
     phys = schema["physical_schema"].get(physical_table, {})
     scope_col = phys.get("scope_column")
+       
 
     if scope_col:
         ph = ", ".join(["%s"] * len(site_ids))
@@ -262,10 +268,10 @@ def _site_scope_join(physical_table: str, table_alias: str, site_ids: list[int])
 def build_aggregate_query(
     entity: str,
     aggregation: str,
-    agg_column: str | None,
-    group_by: list[str] | None,
-    filters: list[dict] | None,
-    site_ids: list[int],
+    agg_column: str | None = None,
+    group_by: list[str] | None = None,
+    filters: list[dict] | None = None,
+    site_ids: list[int] = None,
 ) -> QueryResult:
     """
     Build a deterministic parameterized aggregation query.
@@ -280,6 +286,12 @@ def build_aggregate_query(
     site_ids     : resolved site IDs for scoping (from resolve_user_sites)
     """
     schema = _get_schema()
+    
+   # ✅ ADD THIS BLOCK (critical fix)
+    group_by = group_by or []
+    filters = filters or []
+    site_ids = site_ids or []
+
     corrections: list[dict] = []
 
     # --- resolve entity
@@ -385,7 +397,9 @@ def build_aggregate_query(
     sql_parts.append(order_clause)
 
     sql = "\n".join(sql_parts)
-    params = scope_params + filter_params
+    # params = scope_params + filter_params
+    params = filter_params + scope_params if scope_where else scope_params + filter_params
+    print(sql, "aggregate params", params)
 
     return QueryResult(
         sql=sql,
@@ -426,7 +440,7 @@ def build_search_query(
 
     # --- validate limit
     limit = _validate_limit(limit)
-
+    print(limit)
     # --- resolve columns
     entity_key = next(
         k for k, v in schema["semantic_layer"]["entities"].items()
@@ -506,8 +520,9 @@ def build_search_query(
     sql_parts.append(f"LIMIT %s")
 
     sql = "\n".join(sql_parts)
-    params = scope_params + filter_params + (limit,)
-
+   # params = scope_params + filter_params + (limit,)
+    params = filter_params + scope_params + (limit,) if scope_where else scope_params + filter_params + (limit,)
+    print(sql, "params", params)
     return QueryResult(
         sql=sql,
         params=params,

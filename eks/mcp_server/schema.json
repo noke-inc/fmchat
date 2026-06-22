@@ -14,39 +14,39 @@
       "primary_key": "id",
       "scope_column": "site_id",
       "columns": {
-        "name":          { "type": "varchar(40)",  "nullable": false, "expose": true },
-        "rental_state":  { "type": "varchar(20)",  "nullable": false, "expose": true },
-        "access_type":   { "type": "varchar(45)",  "nullable": false, "expose": true },
-        "details_comments": { "type": "varchar(128)", "nullable": false, "expose": true },
-        "details_width": { "type": "float",        "nullable": false, "expose": true },
-        "details_depth": { "type": "float",        "nullable": false, "expose": true },
-        "details_price": { "type": "float",        "nullable": false, "expose": true },
-        "created_date":  { "type": "timestamp",    "nullable": false, "expose": true },
-        "site_id":       { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
-        "id":            { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
-        "uuid":          { "type": "varchar(36)",  "nullable": true,  "expose": false, "sensitive": true },
-        "user_id":       { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
-        "company_id":    { "type": "int",          "nullable": true,  "expose": false, "sensitive": true },
-        "company_uuid":  { "type": "varchar(36)",  "nullable": false, "expose": false, "sensitive": true }
+        "name":          { "type": "varchar(40)",  "nullable": false, "expose": true,  "description": "Human-readable label for the unit (e.g. A101, Unit 5). Use this as the primary display identifier." },
+        "rental_state":  { "type": "varchar(20)",  "nullable": false, "expose": true,  "description": "Current rental/occupancy status of the unit. Allowed values: 'available' (unoccupied, ready to rent), 'inuse' (currently rented/occupied), 'repo' (under repossession). Synonyms: active/occupied/rented -> inuse; vacant/free/empty/open -> available." },
+        "access_type":   { "type": "varchar(45)",  "nullable": false, "expose": true,  "description": "How the unit is accessed or categorized. Common values: 'rentable' (standard rentable unit), 'zone_trigger', 'site', 'service', 'employee', 'padlock'. Use this to filter by unit category." },
+        "details_comments": { "type": "varchar(128)", "nullable": false, "expose": true,  "description": "Free-text notes or comments about the unit entered by staff." },
+        "details_width": { "type": "float",        "nullable": false, "expose": true,  "description": "Width of the unit in feet. Use for size-based filtering or aggregation." },
+        "details_depth": { "type": "float",        "nullable": false, "expose": true,  "description": "Depth of the unit in feet. Use for size-based filtering or aggregation." },
+        "details_price": { "type": "float",        "nullable": false, "expose": true,  "description": "Monthly rental price of the unit in USD. Use for revenue calculations (sum/avg)." },
+        "created_date":  { "type": "timestamp",    "nullable": false, "expose": true,  "description": "Date and time the unit record was created in the system." },
+        "site_id":       { "type": "int",          "nullable": false, "expose": false, "sensitive": true, "description": "Internal foreign key linking the unit to its site. Not exposed to users." },
+        "id":            { "type": "int",          "nullable": false, "expose": false, "sensitive": true, "description": "Internal primary key for the unit record. Not exposed to users." },
+        "uuid":          { "type": "varchar(36)",  "nullable": true,  "expose": false, "sensitive": true, "description": "Internal UUID for the unit. Not exposed to users." },
+        "user_id":       { "type": "int",          "nullable": false, "expose": false, "sensitive": true, "description": "Internal reference to the user who owns or manages this unit. Not exposed." },
+        "company_id":    { "type": "int",          "nullable": true,  "expose": false, "sensitive": true, "description": "Internal company identifier. Not exposed to users." },
+        "company_uuid":  { "type": "varchar(36)",  "nullable": false, "expose": false, "sensitive": true, "description": "Internal company UUID. Not exposed to users." }
       }
     },
     "users": {
       "table": "users",
       "primary_key": "id",
       "columns": {
-        "first_name":   { "type": "varchar(45)", "nullable": false, "expose": true },
-        "last_name":    { "type": "varchar(45)", "nullable": false, "expose": true },
-        "email":        { "type": "varchar(45)", "nullable": false, "expose": true },
-        "type":         { "type": "varchar(45)", "nullable": false, "expose": true },
-        "state":        { "type": "varchar(45)", "nullable": false, "expose": true },
-        "created_date": { "type": "timestamp",   "nullable": false, "expose": true },
-        "default_site_id": { "type": "int",      "nullable": false, "expose": false, "sensitive": true },
-        "company_id":   { "type": "int",         "nullable": true,  "expose": false, "sensitive": true },
-        "company_uuid": { "type": "varchar(36)", "nullable": false, "expose": false, "sensitive": true },
-        "id":           { "type": "int",         "nullable": false, "expose": false, "sensitive": true },
-        "password":     { "type": "varchar(200)","nullable": true,  "expose": false, "sensitive": true },
-        "pin":          { "type": "varchar(10)", "nullable": false, "expose": false, "sensitive": true },
-        "session_salt": { "type": "varchar(65)", "nullable": false, "expose": false, "sensitive": true }
+        "first_name":   { "type": "varchar(45)", "nullable": false, "expose": true,  "description": "User's first name." },
+        "last_name":    { "type": "varchar(45)", "nullable": false, "expose": true,  "description": "User's last name / surname." },
+        "email":        { "type": "varchar(45)", "nullable": false, "expose": true,  "description": "User's email address. Unique identifier for login." },
+        "type":         { "type": "varchar(45)", "nullable": false, "expose": true,  "description": "Role or category of the user account (e.g. admin, manager, tenant)." },
+        "state":        { "type": "varchar(45)", "nullable": false, "expose": true,  "description": "Account status of the user. Common values: 'active' (account enabled), 'inactive' or 'disabled' (account suspended or deactivated)." },
+        "created_date": { "type": "timestamp",   "nullable": false, "expose": true,  "description": "Date and time the user account was created." },
+        "default_site_id": { "type": "int",      "nullable": false, "expose": false, "sensitive": true, "description": "Internal default site assignment for the user. Not exposed." },
+        "company_id":   { "type": "int",         "nullable": true,  "expose": false, "sensitive": true, "description": "Internal company identifier. Not exposed." },
+        "company_uuid": { "type": "varchar(36)", "nullable": false, "expose": false, "sensitive": true, "description": "Internal company UUID. Not exposed." },
+        "id":           { "type": "int",         "nullable": false, "expose": false, "sensitive": true, "description": "Internal primary key for the user record. Not exposed." },
+        "password":     { "type": "varchar(200)","nullable": true,  "expose": false, "sensitive": true, "description": "Hashed password. Never expose or query this field." },
+        "pin":          { "type": "varchar(10)", "nullable": false, "expose": false, "sensitive": true, "description": "User PIN for physical access. Never expose or query this field." },
+        "session_salt": { "type": "varchar(65)", "nullable": false, "expose": false, "sensitive": true, "description": "Internal session security salt. Never expose or query this field." }
       }
     },
     "users_roles": {
@@ -54,18 +54,18 @@
       "primary_key": "id",
       "note": "Mandatory dependency table — used only to resolve user_id → site_ids. Not directly queryable by tools.",
       "columns": {
-        "user_id":  { "type": "int", "nullable": false, "expose": false, "sensitive": true },
-        "site_id":  { "type": "int", "nullable": false, "expose": false, "sensitive": true }
+        "user_id":  { "type": "int", "nullable": false, "expose": false, "sensitive": true, "description": "Internal user ID used to resolve site access scope. Not exposed." },
+        "site_id":  { "type": "int", "nullable": false, "expose": false, "sensitive": true, "description": "Internal site ID the user has access to. Not exposed." }
       }
     },
     "sites": {
       "table": "sites",
       "primary_key": "id",
-      "note": "Mandatory dependency table — used only to resolve site_id → site name.",
+      "note": "Mandatory dependency table — used to resolve site_id → site name and to expose site list to users.",
       "columns": {
-        "name": { "type": "varchar(100)", "nullable": false, "expose": true },
-        "id":   { "type": "int",          "nullable": false, "expose": false, "sensitive": true },
-        "uuid": { "type": "varchar(36)",  "nullable": true,  "expose": false, "sensitive": true }
+        "name": { "type": "varchar(100)", "nullable": false, "expose": true,  "description": "Display name of the site/facility (e.g. 'Atlanta North', 'Savannah Downtown'). Use for site listings and LIKE filters by location or name." },
+        "id":   { "type": "int",          "nullable": false, "expose": true,  "description": "Numeric site ID. Exposed for reference but use name for human-readable output." },
+        "uuid": { "type": "varchar(36)",  "nullable": true,  "expose": false, "sensitive": true, "description": "Internal site UUID. Not exposed to users." }
       }
     }
   },
@@ -75,8 +75,8 @@
       "unit": {
         "physical_table": "v2_units",
         "aliases": ["unit", "units", "storage unit", "storage units", "space", "spaces", "locker", "lockers", "bay", "bays"],
-        "default_exposed_columns": ["name", "rental_state", "site_name"],
-        "description": "A rentable storage unit or space managed at a site."
+        "default_exposed_columns": ["name", "rental_state"],
+        "description": "A rentable storage unit or space managed at a site. Each unit record provides detailed information about the unit and identifies the associated site and company. The rental_state indicates the current renting status of the unit (e.g., available, occupied, reserved). The access_type defines how the unit can be accessed, such as rentable, zone_trigger, site, service, employee, or padlock. Additional attributes include name (the unit identifier) and last_lock_time (the most recent timestamp when the unit was locked)."
       },
       "user": {
         "physical_table": "users",
@@ -87,32 +87,46 @@
       "site": {
         "physical_table": "sites",
         "aliases": ["site", "sites", "facility", "facilities", "location", "locations", "property", "properties"],
-        "default_exposed_columns": ["name"],
+        "default_exposed_columns": ["id", "name"],
         "description": "A physical property or facility managed in the Noke system."
       }
     },
     "columns": {
       "rental_state": {
+        "description": "Occupancy status of a unit. Canonical values: 'available' (free to rent), 'inuse' (currently rented), 'repo' (under repossession). When filtering, use the alias words directly — the server normalizes them automatically (e.g. active->inuse, vacant->available).",
         "aliases": ["status", "state", "rental status", "availability", "occupancy"],
         "enum_map": {
           "free":       "available",
           "open":       "available",
           "empty":      "available",
           "vacant":     "available",
-          "occupied":   "in use",
-          "rented":     "in use",
-          "taken":      "in use",
-          "active":     "in use"
+          "occupied":   "inuse",
+          "rented":     "inuse",
+          "taken":      "inuse",
+          "active":     "inuse"
         },
-        "allowed_values": ["available", "in use", "repo"]
+        "allowed_values": ["available", "inuse", "repo"]
       },
       "name": {
+        "description": "The display name/label of the record — unit label (e.g. A101) or site name (e.g. Atlanta North). Use LIKE operator to filter by partial name or location keyword.",
         "aliases": ["unit name", "unit id", "space name", "locker name", "site name", "facility name", "label"]
       },
-      "first_name": { "aliases": ["first name", "given name"] },
-      "last_name":  { "aliases": ["last name", "family name", "surname"] },
-      "email":      { "aliases": ["email address", "e-mail"] },
-      "state":      { "aliases": ["user status", "account state", "account status", "active"] }
+      "first_name": {
+        "description": "First name of a user.",
+        "aliases": ["first name", "given name"]
+      },
+      "last_name": {
+        "description": "Last name / surname of a user.",
+        "aliases": ["last name", "family name", "surname"]
+      },
+      "email": {
+        "description": "Email address of a user. Unique login identifier.",
+        "aliases": ["email address", "e-mail"]
+      },
+      "state": {
+        "description": "Account status of a user. Common values: 'active' (enabled), 'inactive' (disabled/suspended). Different from unit rental_state.",
+        "aliases": ["user status", "account state", "account status", "active"]
+      }
     }
   },
 
@@ -138,7 +152,7 @@
       }
     },
     "allowed_group_by": {
-      "v2_units": ["rental_state", "access_type", "site_name"],
+      "v2_units": ["rental_state", "access_type"],
       "users": ["type", "state"]
     },
     "default_sort": {

@@ -101,7 +101,8 @@ PROFILE         = os.getenv("AWS_PROFILE", "DeveloperAdmin-440124919638")
 REGION          = "us-east-2"
 AGENT_ARN       = "arn:aws:bedrock-agentcore:us-east-2:440124919638:runtime/NokeAgent_NokeAgent-tm7hzt7fsf"
 LOCAL_AGENT_URL = os.getenv("LOCAL_AGENT_URL", "").strip()   # e.g. http://localhost:8080/invocations
-PORT            = 8000
+# Default to 9000 so it does not conflict with local MCP on 8000.
+PORT            = int(os.getenv("LOCAL_PROXY_PORT", "9000"))
 UI_DIR          = Path(__file__).parent.parent / "ui"
 
 # ── boto3 client — only initialised when NOT in local mode ────────────────────

@@ -20,7 +20,7 @@
         { "name": "BEDROCK_REGION",      "value": "us-east-2" },
         { "name": "BEDROCK_MODEL_ID",    "value": "us.amazon.nova-micro-v1:0" },
         { "name": "AGENT_AUTH_ENABLED",   "value": "false" },
-        { "name": "AGENT_GATEWAY_URL",    "value": "https://nokeagent-nokemcpgateway-f1kx7iz7lg.gateway.bedrock-agentcore.us-east-2.amazonaws.com/mcp" },
+        { "name": "AGENT_GATEWAY_URL",    "value": "http://localhost:8000/mcp-http/" }, 
         { "name": "AGENT_GATEWAY_REGION", "value": "us-east-2" },
         { "name": "AWS_REGION",           "value": "us-east-2" }
       ]
@@ -47,7 +47,7 @@
         {
           "name": "NokeMCPEksTarget",
           "targetType": "mcpServer",
-          "endpoint": "https://mcp.smartentry.noke.dev/mcp-http/",
+          "endpoint": "http://localhost:8000/mcp-http/",
           "outboundAuth": {
             "type": "NONE"
           }
