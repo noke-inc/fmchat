@@ -1,0 +1,110 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "scope": "Enterprise Storage Engine Integration",
+    "tables_allowed": ["v2_units", "users", "users_roles", "sites", "v2_locks", "v2_locks_to_units"],
+    "note": "A completely metadata-driven configuration directory for high-scale database translation patterns."
+  },
+  "entities": {
+    "unit": {
+      "physical_table": "v2_units",
+      "aliases": ["unit", "units", "storage unit", "storage units", "space", "spaces", "locker", "lockers", "bay", "bays"],
+      "allowed_columns": ["id", "name", "rental_state", "access_type", "details_width", "details_depth", "details_price"],
+      "column_metadata": {
+        "rental_state": {
+          "aliases": ["status", "state", "rental status", "availability", "occupancy"],
+          "allowed_values": ["available", "in use", "repo"],
+          "enum_map": {
+            "available": ["available", "prelet", "checkout", "free", "open", "empty", "vacant"],
+            "in use": ["inuse", "overlock", "testing", "gatelock", "auction-smartentry", "occupied", "rented", "taken", "active"],
+            "repo": ["repo", "auction"]
+          }
+        }
+      },
+      "relationships": {
+        "site": "v2_units.site_id = sites.id",
+        "lock": "v2_locks_to_units.unit_id = v2_units.id",
+        "user": "users_units_parameters.unit_id = v2_units.id"
+      }
+    },
+    "user": {
+      "physical_table": "users",
+      "aliases": ["user", "users", "customer", "customers", "member", "members", "tenant", "tenants"],
+      "allowed_columns": ["id", "first_name", "last_name", "email", "type", "state", "created_date"],
+      "column_metadata": {
+        "state": {
+          "aliases": ["user status", "account state", "account status", "active"],
+          "allowed_values": ["active", "disabled"],
+          "enum_map": {
+            "active": ["active", "verified", "logged_in"],
+            "disabled": ["inactive", "suspended", "frozen", "banned"]
+          }
+        }
+      },
+      "relationships": {
+        "site": "users_roles.user_id = users.id",
+        "unit": "users_units_parameters.user_id = users.id"
+      }
+    },
+    "site": {
+      "physical_table": "sites",
+      "aliases": ["site", "sites", "facility", "facilities", "location", "locations", "property", "properties"],
+      "allowed_columns": ["id", "name", "city", "state"],
+      "relationships": {
+        "unit": "v2_units.site_id = sites.id",
+        "user": "users_roles.site_id = sites.id"
+      }
+    },
+    "lock": {
+      "physical_table": "v2_locks",
+      "aliases": ["lock", "locks", "hardware", "hardware locks", "smart lock", "padlock", "padlocks"],
+      "allowed_columns": ["id", "name", "mac", "hw_type", "hw_state", "voltage_battery", "battery_state", "serial_number"],
+      "relationships": {
+        "unit": "v2_locks_to_units.lock_id = v2_locks.id"
+      }
+    }
+  },
+  "junction_bridges": {
+    "unit.user": {
+      "via_table": "users_units_parameters",
+      "step_1": "users_units_parameters.unit_id = v2_units.id",
+      "step_2": "users_units_parameters.user_id = users.id"
+    },
+    "user.unit": {
+      "via_table": "users_units_parameters",
+      "step_1": "users_units_parameters.user_id = users.id",
+      "step_2": "users_units_parameters.unit_id = v2_units.id"
+    },
+    "user.site": {
+      "via_table": "users_roles",
+      "step_1": "users_roles.user_id = users.id",
+      "step_2": "users_roles.site_id = sites.id"
+    },
+    "site.user": {
+      "via_table": "users_roles",
+      "step_1": "users_roles.site_id = sites.id",
+      "step_2": "users_roles.user_id = users.id"
+    },
+    "unit.lock": {
+      "via_table": "v2_locks_to_units",
+      "step_1": "v2_locks_to_units.unit_id = v2_units.id",
+      "step_2": "v2_locks_to_units.lock_id = v2_locks.id"
+    },
+    "lock.unit": {
+      "via_table": "v2_locks_to_units",
+      "step_1": "v2_locks_to_units.lock_id = v2_locks.id",
+      "step_2": "v2_locks_to_units.unit_id = v2_units.id"
+    }
+  },
+  "allowed_aggregations": {
+  "count": { "sql_function": "COUNT(*)" },
+  "sum": { "sql_function": "SUM({column})" },
+  "avg": { "sql_function": "AVG({column})" }
+  },
+  "safety": {
+    "max_join_depth": 3,
+    "max_limit_ceiling": 50,
+    "allowed_operators": ["=", "IN", "LIKE"],
+    "deny_columns": ["password", "pin", "session_salt", "pin_expiration", "password_url"]
+  }
+}
