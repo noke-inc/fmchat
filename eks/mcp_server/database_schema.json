@@ -8,8 +8,26 @@
   "entities": {
     "unit": {
       "physical_table": "v2_units",
-      "aliases": ["unit", "units", "storage unit", "storage units", "space", "spaces", "locker", "lockers", "bay", "bays"],
-      "allowed_columns": ["id", "name", "rental_state", "access_type", "details_width", "details_depth", "details_price"],
+      "aliases": ["unit", "units", "storage unit", "storage units", "space", "spaces", "locker", "lockers"],
+      "allowed_columns": ["id", "name", "rental_state", "access_type", "details_width", "details_depth", "details_price", "company_id", "site_id"],
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        },
+        "sum": {
+          "sql_function": "SUM({column})",
+          "requires_column": true,
+          "output_column": "total",
+          "allowed_columns": ["details_price", "details_width", "details_depth"]
+        },
+        "avg": {
+          "sql_function": "AVG({column})",
+          "requires_column": true,
+          "output_column": "average",
+          "allowed_columns": ["details_price", "details_width", "details_depth"]
+        }
+      },
       "column_metadata": {
         "rental_state": {
           "aliases": ["status", "state", "rental status", "availability", "occupancy"],
@@ -30,14 +48,20 @@
     "user": {
       "physical_table": "users",
       "aliases": ["user", "users", "customer", "customers", "member", "members", "tenant", "tenants"],
-      "allowed_columns": ["id", "first_name", "last_name", "email", "type", "state", "created_date"],
+      "allowed_columns": ["id", "first_name", "last_name", "email", "type", "state", "created_date", "company_id"],
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        }
+      },
       "column_metadata": {
         "state": {
           "aliases": ["user status", "account state", "account status", "active"],
-          "allowed_values": ["active", "disabled"],
+          "allowed_values": ["active", "inactive"],
           "enum_map": {
             "active": ["active", "verified", "logged_in"],
-            "disabled": ["inactive", "suspended", "frozen", "banned"]
+            "inactive": ["inactive", "suspended", "frozen", "banned"]
           }
         }
       },
@@ -49,7 +73,7 @@
     "site": {
       "physical_table": "sites",
       "aliases": ["site", "sites", "facility", "facilities", "location", "locations", "property", "properties"],
-      "allowed_columns": ["id", "name", "city", "state"],
+      "allowed_columns": ["id", "name", "city", "state", "company_id"],
       "relationships": {
         "unit": "v2_units.site_id = sites.id",
         "user": "users_roles.site_id = sites.id"
@@ -58,7 +82,7 @@
     "lock": {
       "physical_table": "v2_locks",
       "aliases": ["lock", "locks", "hardware", "hardware locks", "smart lock", "padlock", "padlocks"],
-      "allowed_columns": ["id", "name", "mac", "hw_type", "hw_state", "voltage_battery", "battery_state", "serial_number"],
+      "allowed_columns": ["id", "name", "mac", "serial_number", "company_id"],
       "relationships": {
         "unit": "v2_locks_to_units.lock_id = v2_locks.id"
       }
@@ -95,11 +119,6 @@
       "step_1": "v2_locks_to_units.lock_id = v2_locks.id",
       "step_2": "v2_locks_to_units.unit_id = v2_units.id"
     }
-  },
-  "allowed_aggregations": {
-  "count": { "sql_function": "COUNT(*)" },
-  "sum": { "sql_function": "SUM({column})" },
-  "avg": { "sql_function": "AVG({column})" }
   },
   "safety": {
     "max_join_depth": 3,
