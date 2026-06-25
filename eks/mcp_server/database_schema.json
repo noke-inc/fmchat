@@ -29,7 +29,7 @@
           "aliases": ["status", "state", "rental status", "availability", "occupancy"],
           "allowed_values": ["available", "in use", "repo"],
           "enum_map": {
-            "available": ["available", "prelet", "checkout", "free", "open", "empty", "vacant"],
+            "available": ["available", "free", "open", "empty", "vacant"],
             "in use": ["inuse", "overlock", "testing", "gatelock", "auction-smartentry", "occupied", "rented", "taken", "active"],
             "repo": ["repo", "auction"]
           }
@@ -88,7 +88,7 @@
     },
     "lock": {
       "physical_table": "v2_locks",
-      "aliases": ["lock", "locks", "hardware", "smart lock"],
+       "aliases": ["lock", "locks", "hardware", "smart lock", "padlock", "padlocks"],
       "allowed_columns": {
         "id": { "type": "int" },
         "name": { "type": "varchar" },
@@ -97,6 +97,20 @@
       },
       "relationships": {
         "unit": "v2_locks_to_units.lock_id = v2_locks.id"
+      }, 
+      "column_metadata": {
+        "ble_hw_version": {
+          "aliases": ["version", "hardware type", "lock model", "hardware version", "model"],
+          "allowed_values": ["noke volt", "noke one", "noke contact", "noke screen", "noke ion", "noke pad"],
+          "enum_map": {
+            "noke volt": ["3e", "2e", "1w", "noke volt", "volt"],
+            "noke one": ["1a", "noke one", "one"],
+            "noke contact": ["2a", "noke contact", "contact"],
+            "noke screen": ["4k", "noke screen", "screen"],
+            "noke ion": ["4e", "noke ion", "ion"],
+            "noke pad": ["3k", "noke pad", "padlock", "pad"]
+          }
+        }
       }
     }
   },

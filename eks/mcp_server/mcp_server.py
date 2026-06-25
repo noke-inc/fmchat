@@ -247,14 +247,14 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
 if __name__ == "__main__":
     load_database_schema_config("database_schema.json")
 
-   # Simulating: "what is the unit status for 733"
-    mock_subjects = ["unit", "site"]
-    mock_intent = "DATA_RETRIEVAL"
-    mock_filters = [] # No status modifiers requested
+   # Simulating: "how many Noke Volt"
+    mock_subjects = ["lock", "unit"]
+    mock_intent = "DATA_AGGREGATION"
+    mock_filters = ["count", "noke volt"] 
     
     random_session_context = {
         "company_id": None,
-        "site_id":[1001005]
+        "site_id":[1001005],
     }
     
     try:
@@ -262,8 +262,7 @@ if __name__ == "__main__":
             subjects=mock_subjects,
             intent_type=mock_intent,
             session_context=random_session_context,
-            semantic_filters=mock_filters,
-            search_keyword="Service Unit 2256149"
+            semantic_filters=mock_filters            
         )
 
     except Exception as e:
