@@ -11,7 +11,7 @@ def load_database_schema_config(file_path: str = "database_schema.json"):
     global SCHEMA_CATALOG
     with open(file_path, "r") as f:
         SCHEMA_CATALOG = json.load(f)
-    print("✅ 100% Dynamic Datatype-Driven Engine Loaded. Zero hardcoded knowledge remains.")
+   # print("✅ 100% Dynamic Datatype-Driven Engine Loaded. Zero hardcoded knowledge remains.")
 
 def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: dict, semantic_filters: list = None, aggregation_column: str = None, search_keyword: str = None) -> list[dict]:
     if not subjects:
