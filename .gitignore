@@ -40,3 +40,8 @@ recent_logs.txt
 synth_output.txt
 
 evaluation/results/*
+
+eks/mcp_server/node_modules/*
+eks/mcp_server/package*
+
+app/NokeAgent/logs/*
