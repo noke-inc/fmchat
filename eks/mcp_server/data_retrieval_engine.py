@@ -247,11 +247,11 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
 if __name__ == "__main__":
     load_database_schema_config("database_schema.json")
 
-   # Simulating: "how many Noke Volt"
-    mock_subjects = ["lock", "unit"]
+   # Simulating: "What is the total number, average rate, and total value of our vacant units across sites 1001005 for active users?"
+    mock_subjects = ["unit", "site", "user"]
+    mock_filters = ["count", "avg", "sum", "vacant", "active"]
     mock_intent = "DATA_AGGREGATION"
-    mock_filters = ["count", "noke volt"] 
-    
+   
     random_session_context = {
         "company_id": None,
         "site_id":[1001005],
@@ -262,7 +262,8 @@ if __name__ == "__main__":
             subjects=mock_subjects,
             intent_type=mock_intent,
             session_context=random_session_context,
-            semantic_filters=mock_filters            
+            semantic_filters=mock_filters,
+            aggregation_column="details_price",            
         )
 
     except Exception as e:

@@ -112,6 +112,17 @@
           }
         }
       }
+    },
+    "role": {
+      "physical_table": "roles",
+      "aliases": ["role", "roles", "permission", "permissions", "job title", "access level"],
+      "allowed_columns": {
+        "id": { "type": "int" },
+        "name": { "type": "varchar" }
+      },
+      "relationships": {
+        "user": "users_roles.role_id = roles.id"
+      }
     }
   },
   "junction_bridges": {
@@ -120,7 +131,17 @@
     "user.site": { "via_table": "users_roles", "step_1": "users_roles.user_id = users.id", "step_2": "users_roles.site_id = sites.id" },
     "site.user": { "via_table": "users_roles", "step_1": "users_roles.site_id = sites.id", "step_2": "users_roles.user_id = users.id" },
     "unit.lock": { "via_table": "v2_locks_to_units", "step_1": "v2_locks_to_units.unit_id = v2_units.id", "step_2": "v2_locks_to_units.lock_id = v2_locks.id" },
-    "lock.unit": { "via_table": "v2_locks_to_units", "step_1": "v2_locks_to_units.lock_id = v2_locks.id", "step_2": "v2_locks_to_units.unit_id = v2_units.id" }
+    "lock.unit": { "via_table": "v2_locks_to_units", "step_1": "v2_locks_to_units.lock_id = v2_locks.id", "step_2": "v2_locks_to_units.unit_id = v2_units.id" },
+    "user.role": {
+      "via_table": "users_roles",
+      "step_1": "users_roles.user_id = users.id",
+      "step_2": "users_roles.role_id = roles.id"
+    },
+    "role.user": {
+      "via_table": "users_roles",
+      "step_1": "users_roles.role_id = roles.id",
+      "step_2": "users_roles.user_id = users.id"
+    }
   },
   "safety": {
     "max_join_depth": 3,
