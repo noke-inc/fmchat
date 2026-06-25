@@ -1,32 +1,28 @@
 {
   "_meta": {
-    "version": "1.0.0",
-    "scope": "Enterprise Storage Engine Integration",
-    "tables_allowed": ["v2_units", "users", "users_roles", "sites", "v2_locks", "v2_locks_to_units"],
-    "note": "A completely metadata-driven configuration directory for high-scale database translation patterns."
+    "version": "1.1.0",
+    "scope": "Enterprise Storage Engine Integration - Strict Datatypes Iteration",
+    "tables_allowed": ["v2_units", "users", "users_roles", "sites", "v2_locks", "v2_locks_to_units"]
   },
   "entities": {
     "unit": {
       "physical_table": "v2_units",
-      "aliases": ["unit", "units", "storage unit", "storage units", "space", "spaces", "locker", "lockers"],
-      "allowed_columns": ["id", "name", "rental_state", "access_type", "details_width", "details_depth", "details_price", "company_id", "site_id"],
+      "aliases": ["unit", "units", "storage unit", "space", "spaces", "locker", "lockers"],
+      "allowed_columns": {
+        "id": { "type": "int" },
+        "name": { "type": "varchar" },
+        "rental_state": { "type": "varchar" },
+        "access_type": { "type": "varchar" },
+        "details_width": { "type": "float" },
+        "details_depth": { "type": "float" },
+        "details_price": { "type": "float" },
+        "company_id": { "type": "int" },
+        "site_id": { "type": "int" }
+      },
       "allowed_aggregations": {
-        "count": {
-          "sql_function": "COUNT(*)",
-          "output_column": "count"
-        },
-        "sum": {
-          "sql_function": "SUM({column})",
-          "requires_column": true,
-          "output_column": "total",
-          "allowed_columns": ["details_price", "details_width", "details_depth"]
-        },
-        "avg": {
-          "sql_function": "AVG({column})",
-          "requires_column": true,
-          "output_column": "average",
-          "allowed_columns": ["details_price", "details_width", "details_depth"]
-        }
+        "count": { "sql_function": "COUNT(*)", "output_column": "count" },
+        "sum": { "sql_function": "SUM({column})", "requires_column": true, "output_column": "total", "allowed_columns": ["details_price", "details_width", "details_depth"] },
+        "avg": { "sql_function": "AVG({column})", "requires_column": true, "output_column": "average", "allowed_columns": ["details_price", "details_width", "details_depth"] }
       },
       "column_metadata": {
         "rental_state": {
@@ -47,13 +43,19 @@
     },
     "user": {
       "physical_table": "users",
-      "aliases": ["user", "users", "customer", "customers", "member", "members", "tenant", "tenants"],
-      "allowed_columns": ["id", "first_name", "last_name", "email", "type", "state", "created_date", "company_id"],
+      "aliases": ["user", "users", "customer", "customers", "tenant", "tenants"],
+      "allowed_columns": {
+        "id": { "type": "int" },
+        "first_name": { "type": "varchar" },
+        "last_name": { "type": "varchar" },
+        "email": { "type": "varchar" },
+        "type": { "type": "varchar" },
+        "state": { "type": "varchar" },
+        "created_date": { "type": "timestamp" },
+        "company_id": { "type": "int" }
+      },
       "allowed_aggregations": {
-        "count": {
-          "sql_function": "COUNT(*)",
-          "output_column": "count"
-        }
+        "count": { "sql_function": "COUNT(*)", "output_column": "count" }
       },
       "column_metadata": {
         "state": {
@@ -72,8 +74,13 @@
     },
     "site": {
       "physical_table": "sites",
-      "aliases": ["site", "sites", "facility", "facilities", "location", "locations", "property", "properties"],
-      "allowed_columns": ["id", "name", "city", "state", "company_id"],
+      "aliases": ["site", "sites", "facility", "facilities", "location", "property"],
+      "allowed_columns": {
+        "id": { "type": "int" },
+        "name": { "type": "varchar" },
+        "city": { "type": "varchar" },
+        "state": { "type": "varchar" }
+      },
       "relationships": {
         "unit": "v2_units.site_id = sites.id",
         "user": "users_roles.site_id = sites.id"
@@ -81,44 +88,25 @@
     },
     "lock": {
       "physical_table": "v2_locks",
-      "aliases": ["lock", "locks", "hardware", "hardware locks", "smart lock", "padlock", "padlocks"],
-      "allowed_columns": ["id", "name", "mac", "serial_number", "company_id"],
+      "aliases": ["lock", "locks", "hardware", "smart lock"],
+      "allowed_columns": {
+        "id": { "type": "int" },
+        "name": { "type": "varchar" },
+        "ble_hw_version": { "type": "varchar" },
+        "company_id": { "type": "int" }
+      },
       "relationships": {
         "unit": "v2_locks_to_units.lock_id = v2_locks.id"
       }
     }
   },
   "junction_bridges": {
-    "unit.user": {
-      "via_table": "users_units_parameters",
-      "step_1": "users_units_parameters.unit_id = v2_units.id",
-      "step_2": "users_units_parameters.user_id = users.id"
-    },
-    "user.unit": {
-      "via_table": "users_units_parameters",
-      "step_1": "users_units_parameters.user_id = users.id",
-      "step_2": "users_units_parameters.unit_id = v2_units.id"
-    },
-    "user.site": {
-      "via_table": "users_roles",
-      "step_1": "users_roles.user_id = users.id",
-      "step_2": "users_roles.site_id = sites.id"
-    },
-    "site.user": {
-      "via_table": "users_roles",
-      "step_1": "users_roles.site_id = sites.id",
-      "step_2": "users_roles.user_id = users.id"
-    },
-    "unit.lock": {
-      "via_table": "v2_locks_to_units",
-      "step_1": "v2_locks_to_units.unit_id = v2_units.id",
-      "step_2": "v2_locks_to_units.lock_id = v2_locks.id"
-    },
-    "lock.unit": {
-      "via_table": "v2_locks_to_units",
-      "step_1": "v2_locks_to_units.lock_id = v2_locks.id",
-      "step_2": "v2_locks_to_units.unit_id = v2_units.id"
-    }
+    "unit.user": { "via_table": "users_units_parameters", "step_1": "users_units_parameters.unit_id = v2_units.id", "step_2": "users_units_parameters.user_id = users.id" },
+    "user.unit": { "via_table": "users_units_parameters", "step_1": "users_units_parameters.user_id = users.id", "step_2": "users_units_parameters.unit_id = v2_units.id" },
+    "user.site": { "via_table": "users_roles", "step_1": "users_roles.user_id = users.id", "step_2": "users_roles.site_id = sites.id" },
+    "site.user": { "via_table": "users_roles", "step_1": "users_roles.site_id = sites.id", "step_2": "users_roles.user_id = users.id" },
+    "unit.lock": { "via_table": "v2_locks_to_units", "step_1": "v2_locks_to_units.unit_id = v2_units.id", "step_2": "v2_locks_to_units.lock_id = v2_locks.id" },
+    "lock.unit": { "via_table": "v2_locks_to_units", "step_1": "v2_locks_to_units.lock_id = v2_locks.id", "step_2": "v2_locks_to_units.unit_id = v2_units.id" }
   },
   "safety": {
     "max_join_depth": 3,

@@ -11,7 +11,7 @@ def load_database_schema_config(file_path: str = "database_schema.json"):
     global SCHEMA_CATALOG
     with open(file_path, "r") as f:
         SCHEMA_CATALOG = json.load(f)
-    print("✅ 100% Dynamic Engine Loaded. Zero hardcoded calculation branches remain.")
+    print("✅ 100% Dynamic Datatype-Driven Engine Loaded. Zero hardcoded knowledge remains.")
 
 def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: dict, semantic_filters: list = None, aggregation_column: str = None, search_keyword: str = None) -> list[dict]:
     if not subjects:
@@ -83,6 +83,8 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
     # ========================================================
     # 2. DYNAMIC SELECT COMPILATION
     # ========================================================
+    allowed_cols_dict = entity_meta.get("allowed_columns", {})
+    
     if intent_type == "DATA_AGGREGATION" and semantic_filters:
         allowed_formulas = entity_meta.get("allowed_aggregations", {})
         for op in [f.lower() for f in semantic_filters]:
@@ -94,7 +96,7 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             out_name = formula_meta["output_column"]
             
             if formula_meta.get("requires_column"):
-                if aggregation_column in formula_meta["allowed_columns"] and aggregation_column in entity_meta["allowed_columns"]:
+                if aggregation_column in formula_meta["allowed_columns"] and aggregation_column in allowed_cols_dict:
                     compiled_func = raw_function.format(column=f"t0.{aggregation_column}")
                     select_fields.append(f"{compiled_func} AS {out_name}_{aggregation_column}")
             else:
@@ -103,14 +105,15 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         if not select_fields:
             select_fields.append("COUNT(*) AS count")
     else:
-        for col in entity_meta["allowed_columns"]:
+        for col in allowed_cols_dict.keys():
             if col not in SCHEMA_CATALOG["safety"]["deny_columns"]:
                 select_fields.append(f"t0.{col}")
                 
         for entity_name, assigned_alias in alias_map.items():
             if entity_name != root_entity:
                 child_meta = SCHEMA_CATALOG["entities"][entity_name]
-                for col in child_meta["allowed_columns"]:
+                child_cols = child_meta.get("allowed_columns", {})
+                for col in child_cols.keys():
                     if col not in SCHEMA_CATALOG["safety"]["deny_columns"]:
                         select_fields.append(f"{assigned_alias}.{col} AS {entity_name}_{col}")
 
@@ -128,23 +131,19 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         target_column_name = session_key
         resolved_column_alias = None
         
-        # Track A: Direct match inside the primary table
-        if target_column_name in entity_meta["allowed_columns"]:
+        if target_column_name in allowed_cols_dict:
             resolved_column_alias = "t0"
         else:
-            # Track B: Dynamic Namespace Scan across child entities [🔒]
             for entity_name, assigned_alias in alias_map.items():
                 child_meta = SCHEMA_CATALOG["entities"][entity_name]
+                child_cols = child_meta.get("allowed_columns", {})
                 
-                # Check for direct naming equality matches inside child schemas
-                if target_column_name in child_meta["allowed_columns"]:
+                if target_column_name in child_cols:
                     resolved_column_alias = assigned_alias
                     break
                     
-                # Adaptive Suffix Translation: Automatically reduces 'site_id' or 'user_id' 
-                # to primitive primary keys ('id') matching your physical tables dynamically [🔒]
                 clean_suffix_token = target_column_name.replace(f"{entity_name}_", "")
-                if clean_suffix_token in child_meta["allowed_columns"] and target_column_name.startswith(entity_name):
+                if clean_suffix_token in child_cols and target_column_name.startswith(entity_name):
                     resolved_column_alias = assigned_alias
                     target_column_name = clean_suffix_token
                     break
@@ -168,9 +167,29 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
     else:
         where_clauses.append("1=1")
 
-    if search_keyword and "first_name" in entity_meta["allowed_columns"]:
-        where_clauses.append("(t0.first_name LIKE %(search)s OR t0.last_name LIKE %(search)s)")
-        query_params["search"] = f"%{search_keyword}%"
+    # ─── REFACTORED SECTION 3: STRICT TYPE-DRIVEN TEXT SEARCH BUILDER ───
+    if search_keyword:
+        search_clauses = []
+        approved_text_types = ["varchar", "text", "char", "string", "timestamp"]
+        
+        for entity_name, assigned_alias in alias_map.items():
+            target_table_meta = SCHEMA_CATALOG["entities"].get(entity_name)
+            if not target_table_meta:
+                continue
+                
+            cols_map = target_table_meta.get("allowed_columns", {})
+            for col_name, col_props in cols_map.items():
+                # Read the precise type string directly from your nested JSON schema file
+                column_datatype = str(col_props.get("type", "")).lower()
+                
+                # If the column is registered as a text type, add it cleanly
+                if column_datatype in approved_text_types:
+                    search_clauses.append(f"{assigned_alias}.{col_name} LIKE %(search)s")
+
+        if search_clauses:
+            combined_search_string = " OR ".join(search_clauses)
+            where_clauses.append(f"({combined_search_string})")
+            query_params["search"] = f"%{search_keyword}%"
         
     if semantic_filters:
         math_keywords = list(entity_meta.get("allowed_aggregations", {}).keys())
@@ -195,15 +214,11 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
                             query_params[unique_param_name] = tuple(raw_database_values)
                             filter_found_and_mapped = True
                             break
-                            
                     if filter_found_and_mapped:
                         break
                 if filter_found_and_mapped:
                     break
-
-    # ========================================================
-    # 4. FINAL STRING CONCATENATION & EMISSION
-    # ========================================================
+# ========================================================# 4. FINAL STRING CONCATENATION & EMISSION# ========================================================
     columns_str = ", ".join(select_fields)
     joins_str = " ".join(join_clauses)
     where_str = " AND ".join(where_clauses)
@@ -228,20 +243,28 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         print("Formatting log notice:", e)
     return execute_query(final_sql, query_params)
 
-    #--- LOCAL DYNAMIC TESTING PIPELINE ENVIRONMENT --- #
+#--- LOCAL DYNAMIC TESTING HARNESS ---#
 if __name__ == "__main__":
     load_database_schema_config("database_schema.json")
+
+   # Simulating: "what is the unit status for 733"
+    mock_subjects = ["unit", "site"]
+    mock_intent = "DATA_RETRIEVAL"
+    mock_filters = [] # No status modifiers requested
     
-    mock_filters = ["count", "avg", "sum", "vacant", "active"]
+    random_session_context = {
+        "company_id": None,
+        "site_id":[1001005]
+    }
     
-    random_session_context = {"company_id": None,
-                              "site_id":[1001005, 1001009, 1001050],
-                              "user_id":[1032127]}
     try:
-        run_compiled_mcp_query(subjects=["unit", "site", "user"],
-                               intent_type="DATA_AGGREGATION",
-                               session_context=random_session_context,
-                               semantic_filters=mock_filters,
-                               aggregation_column="details_price")
+        run_compiled_mcp_query(
+            subjects=mock_subjects,
+            intent_type=mock_intent,
+            session_context=random_session_context,
+            semantic_filters=mock_filters,
+            search_keyword="Service Unit 2256149"
+        )
+
     except Exception as e:
         print(f"❌ Local Execution Unit Test Failed: {e}")
