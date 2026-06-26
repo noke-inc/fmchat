@@ -7,7 +7,7 @@ from typing import TypedDict, Annotated, Sequence, Optional
 from langchain_aws import ChatBedrock
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
-from config import BEDROCK_MODEL_ID, BEDROCK_REGION, AGENT_GATEWAY_URL, AGENT_GATEWAY_REGION
+from config import BEDROCK_MODEL_ID, BEDROCK_REGION
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import add_messages
 
@@ -36,6 +36,7 @@ class AgentState(TypedDict):
 # =============================================================================
 # ── LLM factory ──────────────────────────────────────────────────────────────
 def _llm() -> ChatBedrock:
+    print(f"\n🧠 INITIALIZING AMAZON BEDROCK LLM MODEL: {BEDROCK_MODEL_ID} in region {BEDROCK_REGION}\n")
     return ChatBedrock(
         model_id=BEDROCK_MODEL_ID,
         region_name=BEDROCK_REGION,
@@ -73,6 +74,27 @@ def execute_storage_query(
 # =============================================================================
 # 4. SYSTEM LOGICAL GRAPH NODES (BUILT FROM SCRATCH)
 # =============================================================================
+_RELATIONAL_PATH_INSTRUCTIONS = (
+    "You MUST construct the 'target_subjects' array as a sequential relational pipeline path "
+    "where each entity directly shares a structural bridge with the next. Choose from these "
+    "pre-validated relationship order sequences:\n"
+    "- To pull or count users by permission roles at a location: Use exactly ['site', 'user', 'role']\n"
+    "- To locate smart locks or firmware codes by facility: Use exactly ['site', 'unit', 'lock']\n"
+    "- To track lock hardware versions linked to specific customers: Use exactly ['user', 'unit', 'lock']\n"
+    "- To resolve rental states, spaces, or unit statuses for a specific user name: Use exactly ['site', 'user', 'unit']\n\n"
+    
+    # ─── DYNAMIC PARAMETER SEPARATION BLUEPRINT RULES ───
+    "CRITICAL PARAMETER CLASSIFICATION PROTOCOL:\n"
+    "1. You MUST check the 'column_metadata' registry map inside your schema. If an extracted text token "
+    "explicitly matches an available enum key name or a synonym tracking status array (such as values "
+    "mapping to 'vacant', 'active', 'repo', or custom lock firmware models), you MUST place this token "
+    "inside the 'semantic_filters' array layout.\n"
+    "2. If an extracted token represents a literal variable value used for matching unique identity cells—such as "
+    "individual human first/last names, company emails, specific unit label designations, text descriptions, "
+    "or alphanumeric tracking sequences—you MUST place this value inside the 'search_keyword' parameter field.\n"
+    "3. Never mix these layers: Any identity strings or row-level identifier values belong in 'search_keyword'."
+)
+
 def call_bedrock_orchestrator(state: AgentState):
     """The driving LLM node that analyzes prompts and structures tool parameters."""
     messages = state["messages"]
@@ -81,25 +103,21 @@ def call_bedrock_orchestrator(state: AgentState):
     system_instruction = (
         "You are the centralized analytical interface for the Noke Smart Entry infrastructure.\n"
         "Your only resource for fetching system counts, metrics, and profile listings is 'execute_storage_query'.\n"
-        "You MUST construct the 'target_subjects' array as a sequential relational pipeline path. "
-        "Pre-validated relationship order strings you must choose from:\n"
-        "- Users by permission roles at a location: Use exactly ['site', 'user', 'role']\n"
-        "- Hardware locks or firmware codes by facility: Use exactly ['site', 'unit', 'lock']\n"
-        "- Smart lock hardware versions linked to customers: Use exactly ['user', 'unit', 'lock']\n"
-        "- Storage spaces/units booked by specific individuals: Use exactly ['user', 'unit']\n\n"
+        f"{_RELATIONAL_PATH_INSTRUCTIONS}\n\n"
         "If a manager asks for a hardware model count, pass its concept title (e.g. 'noke volt') inside semantic_filters.\n"
         "Do not invent column text fields. Do not expose physical tables or backend structures to the user."
     )
     
     # Initialize your Amazon Bedrock model instance and bind your secure tool schema contract
     llm_with_tools = _llm().bind_tools([execute_storage_query])
+    print(f"\n🧠 INITIALIZING AMAZON BEDROCK LLM MODEL: {BEDROCK_MODEL_ID} in region {BEDROCK_REGION}\n")
     
     # Prepend the system prompt instruction to the active conversation history track
     complete_message_track = [SystemMessage(content=system_instruction)] + list(messages)
     
     # Dispatch parameters down to AWS Bedrock runtime layers
     response_message = llm_with_tools.invoke(complete_message_track)
-   
+    print(f"\n🧠 AMAZON BEDROCK LLM MODEL RESPONSE: {response_message}\n")
     return {"messages": [response_message]}
 
 
@@ -214,7 +232,7 @@ if __name__ == "__main__":
     print("═"*80)
     
     # Simulating a live user prompt string input targeting your actual hardware models
-    manager_prompt_input = "How many Noke Volt locks are managed at our site?"
+    manager_prompt_input = "Rental state for user robert?"
     
     # FIXED: Explicitly use the native LangChain HumanMessage constructor cleanly 
     # to avoid colliding with any 'types' module namespaces imports from the top of the file!

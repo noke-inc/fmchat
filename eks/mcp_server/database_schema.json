@@ -47,12 +47,10 @@
       "allowed_columns": {
         "id": { "type": "int" },
         "first_name": { "type": "varchar" },
-        "last_name": { "type": "varchar" },
-        "email": { "type": "varchar" },
+        "last_name": { "type": "varchar" },       
         "type": { "type": "varchar" },
         "state": { "type": "varchar" },
-        "created_date": { "type": "timestamp" },
-        "company_id": { "type": "int" }
+        "created_date": { "type": "timestamp" }        
       },
       "allowed_aggregations": {
         "count": { "sql_function": "COUNT(*)", "output_column": "count" }
