@@ -74,6 +74,8 @@ def execute_storage_query(
 # =============================================================================
 # 4. SYSTEM LOGICAL GRAPH NODES (BUILT FROM SCRATCH)
 # =============================================================================
+# agent_graph.py (Update your shared string constant at the top of the file)
+
 _RELATIONAL_PATH_INSTRUCTIONS = (
     "You MUST construct the 'target_subjects' array as a sequential relational pipeline path "
     "where each entity directly shares a structural bridge with the next. Choose from these "
@@ -81,19 +83,21 @@ _RELATIONAL_PATH_INSTRUCTIONS = (
     "- To pull or count users by permission roles at a location: Use exactly ['site', 'user', 'role']\n"
     "- To locate smart locks or firmware codes by facility: Use exactly ['site', 'unit', 'lock']\n"
     "- To track lock hardware versions linked to specific customers: Use exactly ['user', 'unit', 'lock']\n"
-    "- To resolve rental states, spaces, or unit statuses for a specific user name: Use exactly ['site', 'user', 'unit']\n\n"
+    "- To resolve rental states or unit statuses for a specific user name: Use exactly ['site', 'user', 'unit']\n"
     
-    # ─── DYNAMIC PARAMETER SEPARATION BLUEPRINT RULES ───
+    # ─── ADD THIS SHORTER PATH BLUEPRINT FOR DIRECT UNIT LOOKUPS ───
+    "- To find or count units/spaces directly at a location without a known user name: Use exactly ['site', 'unit']\n\n"
+    
     "CRITICAL PARAMETER CLASSIFICATION PROTOCOL:\n"
     "1. You MUST check the 'column_metadata' registry map inside your schema. If an extracted text token "
-    "explicitly matches an available enum key name or a synonym tracking status array (such as values "
-    "mapping to 'vacant', 'active', 'repo', or custom lock firmware models), you MUST place this token "
+    "explicitly matches an available enum key name or a synonym tracking status array, you MUST place this token "
     "inside the 'semantic_filters' array layout.\n"
     "2. If an extracted token represents a literal variable value used for matching unique identity cells—such as "
     "individual human first/last names, company emails, specific unit label designations, text descriptions, "
     "or alphanumeric tracking sequences—you MUST place this value inside the 'search_keyword' parameter field.\n"
     "3. Never mix these layers: Any identity strings or row-level identifier values belong in 'search_keyword'."
 )
+
 
 def call_bedrock_orchestrator(state: AgentState):
     """The driving LLM node that analyzes prompts and structures tool parameters."""
@@ -232,7 +236,7 @@ if __name__ == "__main__":
     print("═"*80)
     
     # Simulating a live user prompt string input targeting your actual hardware models
-    manager_prompt_input = "Rental state for user robert?"
+    manager_prompt_input = "Total number of units across sites Mateo's House and Mateo's Office?"
     
     # FIXED: Explicitly use the native LangChain HumanMessage constructor cleanly 
     # to avoid colliding with any 'types' module namespaces imports from the top of the file!
@@ -241,7 +245,7 @@ if __name__ == "__main__":
     # Initialize the active state values matching your system specifications
     initial_graph_state = {
         "messages": [HumanMessage(content=manager_prompt_input)],        
-        "site_id": [1001005]
+        "site_id": [1001005, 1001009]
     }
     
     print(f"💬 MANAGER INPUT PROMPT: '{manager_prompt_input}'")

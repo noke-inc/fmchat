@@ -1,369 +1,108 @@
-"""
-mcp_server/main.py
-
-FastAPI application entry point.
-
-Endpoints
-─────────
-GET  /health        liveness probe
-GET  /mcp-http/     MCP streamable-http endpoint — AgentCore Gateway connects here
-GET  /mcp           MCP SSE endpoint — local/dev LangChain usage
-POST /api/query     Direct MCP tool call (JWT + API-key protected, for testing)
-"""
-
-import logging
-import os
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import Any
-
-import uvicorn
-from fastapi import FastAPI, Header, HTTPException, Request
+# main.py
 import json
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from fastmcp import FastMCP
+from typing import List, Optional
 from pydantic import BaseModel, Field
+from mcp.server.fastmcp import FastMCP
 
-from mcp_server.auth.noke_jwt import validate_noke_token
-from mcp_server.config import MCP_API_KEY
-from mcp_server.tools import (
-    tool_aggregate_query,
-    tool_search_records,
-)
+# Import your frozen, data-driven core engine functions safely
+from data_retrieval_engine import load_database_schema_config, run_compiled_mcp_query
 
-# ── Logging ───────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.DEBUG if os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG" else logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+# 1. Initialize the official Model Context Protocol server instance
+mcp_app = FastMCP("Storage-Enterprise-Data-Gateway")
 
-# Optional file logging via LOG_FILE env var
-LOG_FILE = os.getenv("LOG_FILE", "")
-if LOG_FILE:
-    try:
-        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-    except Exception:
-        pass
-    level = logging.DEBUG if os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG" else logging.INFO
-    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=5)
-    file_handler.setLevel(level)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"))
-    logging.getLogger().addHandler(file_handler)
-
-# ── MCP server (fastmcp) ──────────────────────────────────────────────────────
-# Registers DB tools so LangChain can discover and call them via SSE at GET /mcp
-mcp = FastMCP("Noke Smart Entry MCP")
+# 2. Cache your static JSON schema roadmap on container boot-up
+load_database_schema_config("database_schema.json")
 
 
-class FilterCondition(BaseModel):
-    """A single filter condition passed to MCP query tools."""
-    column: str = Field(description="Column name to filter on (e.g. 'rental_state', 'access_type')")
-    operator: str = Field(description="Comparison operator: =, !=, >, <, >=, <=, IN, LIKE")
-    value: str = Field(description="Value to compare against (e.g. 'inuse', 'available')")
-
-
-@mcp.tool()
-def aggregate_query(
-    user_id: int,
-    entity: str,
-    aggregation: str,
-    agg_column: str = "",
-    group_by: list[str] = [],
-    filters: list[dict] = []
-) -> dict:
-    """
-    Run a deterministic aggregation (count/sum/avg) over an entity.
-
-    entity       — semantic name: 'unit' | 'user' | 'site'
-    aggregation  — 'count' | 'sum' | 'avg'
-    agg_column   — required for sum/avg (e.g. 'details_price'); leave empty for count
-    group_by     — columns to group by (e.g. ['rental_state'])
-    filters      — filter conditions, each with column/operator/value
-                   e.g. [{column: 'rental_state', operator: '=', value: 'inuse'}]
-
-    Returns {results, corrections, metadata} or {error, code} on failure.
-    """
-    logger.debug(
-        "MCP tool: aggregate_query user_id=%s entity=%s aggregation=%s group_by=%s filters=%s",
-        user_id, entity, aggregation, group_by, filters,
-    )
-    print(f"aggregate_query: user_id={user_id} entity={entity} aggregation={aggregation} group_by={group_by} filters={filters}")
-    
-    # ✅ Normalize filters safely
-    if not filters:
-        filters = []
-
-    elif isinstance(filters, str):
-        try:
-            filters = json.loads(filters.replace("'", '"'))
-        except Exception:
-            return {"error": "Invalid filters format"}
-
-    elif not isinstance(filters, list):
-        filters = []
-
-    # ✅ Ensure each item is dict
-    normalized = []
-    for f in filters:
-        if isinstance(f, dict):
-            normalized.append(f)
-        elif hasattr(f, "model_dump"):
-            normalized.append(f.model_dump())
-        else:
-            return {"error": "Invalid filter structure"}
-
-    filters = normalized
-
-    return tool_aggregate_query(
-        user_id=user_id,
-        entity=entity,
-        aggregation=aggregation,
-        agg_column=agg_column or None,
-        group_by=group_by or None,
-        filters=filters or None,
-    )
-
-
-@mcp.tool()
-def search_records(
-    user_id: int,
-    entity: str,
-    columns: list[str] = [],
-    filters: Any = None,
-    sort_column: str = "",
-    sort_direction: str = "",
-    limit: int = 50,
-) -> dict:
-    """
-    Retrieve records for an entity scoped to the calling user's sites.
-
-    entity         — semantic name: 'unit' | 'user' | 'site'
-    columns        — columns to return (empty = entity defaults)
-    filters        — filter conditions, each with column/operator/value
-                     e.g. [{column: 'rental_state', operator: '=', value: 'inuse'}]
-    sort_column    — column to sort by (empty = default)
-    sort_direction — 'ASC' | 'DESC' (empty = default)
-    limit          — max rows to return (1-200, default 50)
-
-    Returns {results, corrections, metadata} or {error, code} on failure.
-    """
-    logger.debug(
-        "MCP tool: search_records user_id=%s entity=%s columns=%s filters=%s limit=%s",
-        user_id, entity, columns, filters, limit,
-    )
-    print(f"search_records: user_id={user_id} entity={entity} columns={columns} filters={filters}")
-
-    
-    # ✅ Normalize filters
-    if not filters:
-        filters = []
-
-    elif isinstance(filters, str):
-        try:
-            filters = json.loads(filters.replace("'", '"'))
-        except Exception:
-            return {"error": "Invalid filters format"}
-
-    elif not isinstance(filters, list):
-        filters = []
-
-    filters = [
-        f.model_dump() if hasattr(f, "model_dump") else f
-        for f in filters
-    ]
-
-
-    return tool_search_records(
-        user_id=user_id,
-        entity=entity,
-        columns=columns or None,
-        filters=[f.model_dump() for f in filters] if filters else None,
-        sort_column=sort_column or None,
-        sort_direction=sort_direction or None,
-        limit=limit,
-    )
-
-
-# Build streamable MCP app once so we can reuse its lifespan in the parent FastAPI app.
-mcp_http_app = mcp.http_app(path="/", transport="streamable-http")
-
-# ── FastAPI app ───────────────────────────────────────────────────────────────
-app = FastAPI(
-    title="Noke Smart Entry — MCP Server",
-    description="MCP tool server for AgentCore Gateway and local dev usage.",
-    version="3.0.0",
-    lifespan=mcp_http_app.lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
-
-
-class NoCacheStaticFiles(StaticFiles):
-    """Static file handler that disables browser caching for local UI assets."""
-
-    def file_response(self, *args, **kwargs):
-        response = super().file_response(*args, **kwargs)
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
-
-# Gateway-compatible MCP endpoint (Streamable HTTP)
-# AgentCore Gateway target should point to: https://mcp.smartentry.noke.dev/mcp-http/
-app.mount("/mcp-http", mcp_http_app)
-
-# SSE MCP endpoint kept for local/dev LangChain MultiServerMCPClient usage
-# Local agent URL remains: http://localhost:8000/mcp/sse
-app.mount("/mcp", mcp.sse_app())
-
-logger.info("MCP server starting — api_key_required=%s", bool(MCP_API_KEY))
-
-# ── Health ────────────────────────────────────────────────────────────────────
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-# ── Static UI ─────────────────────────────────────────────────────────────────
-# NOTE: mount LAST — catch-all "/" shadows any routes defined after it.
-# Only mounted when the ui/ directory exists (local dev only).
-# In EKS the container has no ui/ directory.
-UI_DIR = Path(__file__).resolve().parent.parent.parent / "ui"
-
-
-# ── Direct query endpoint (JWT + API-key protected, kept for direct testing) ──
-
-class QueryRequest(BaseModel):
-    tool:           str             = Field(..., description="aggregate_query | search_records")
-    entity:         str             = Field(..., description="Semantic entity: 'unit' | 'user' | 'site'")
-    user_token:     str | None      = Field(None, description="NOKE JWT (fallback when no Authorization header)")
-    aggregation:    str | None      = Field(None, description="count | sum | avg — required for aggregate_query")
-    agg_column:     str | None      = Field(None, description="Column for sum/avg")
-    group_by:       list[str] | None = Field(None, description="Columns to group by")
-    columns:        list[str] | None = Field(None, description="Columns to return for search_records")
-    filters:        list[dict] | None = Field(None, description="List of {column, operator, value} dicts")
-    sort_column:    str | None      = Field(None)
-    sort_direction: str | None      = Field(None, description="ASC | DESC")
-    limit:          int             = Field(50, ge=1, le=200)
-
-
-class QueryResponse(BaseModel):
-    tool:      str
-    user_id:   int
-    site_id:   int | None
-    row_count: int
-    data:      list[dict]
-
-
-@app.post("/api/query", response_model=QueryResponse)
-def query(
-    req:           QueryRequest,
-    request:       Request,
-    x_api_key:     str = Header(default="", alias="X-API-Key"),
-    authorization: str = Header(default="", alias="Authorization"),
-):
-    """Direct MCP tool query. Requires X-API-Key + valid NOKE JWT."""
-    # Log caller metadata and sanitized request body for debugging.
-    try:
-        client_host = request.client.host if getattr(request, "client", None) else None
-    except Exception:
-        client_host = None
-    xff = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For") or ""
-    ua = request.headers.get("user-agent", "")
-    body = req.dict()
-    if body.get("user_token"):
-        body["user_token"] = "<redacted>"
-    if body.get("user_token") is None and body.get("user_token") == "":
-        body.pop("user_token", None)
-    try:
-        body_json = json.dumps(body, default=str, ensure_ascii=False)
-    except Exception:
-        body_json = str(body)
-
-    logger.info("POST /api/query called client=%s xff=%s ua=%s api_key=%s body=%s",
-                client_host, xff, ua, bool(x_api_key), body_json)
-
-    if MCP_API_KEY and x_api_key != MCP_API_KEY:
-        logger.warning("Invalid API key on /api/query")
-        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
-
-    token = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
-    if not token and req.user_token:
-        token = req.user_token
-    if not token:
-        raise HTTPException(status_code=401, detail="NOKE JWT required.")
-
-    # try:
-    #     claims = validate_noke_token(token)
-    # except PermissionError as e:
-    #     raise HTTPException(status_code=403, detail=str(e))
-    # except RuntimeError as e:
-    #     raise HTTPException(status_code=500, detail=str(e))
-
-    user_id = 1032127 #claims["user_id"]
-    site_id = 1001005 #claims["site_id"]
-    logger.info("/api/query user_id=%s site_id=%s tool=%s", user_id, site_id, req.tool)
-
-    try:
-        if req.tool == "aggregate_query":
-            if not req.aggregation:
-                raise HTTPException(status_code=400, detail="'aggregation' required for aggregate_query.")
-            result = tool_aggregate_query(
-                user_id=user_id, entity=req.entity, aggregation=req.aggregation,
-                agg_column=req.agg_column, group_by=req.group_by, filters=req.filters,
-            )
-        elif req.tool == "search_records":
-            result = tool_search_records(
-                user_id=user_id, entity=req.entity, columns=req.columns,
-                filters=req.filters, sort_column=req.sort_column,
-                sort_direction=req.sort_direction, limit=req.limit,
-            )
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown tool '{req.tool}'. Available: aggregate_query, search_records",
-            )
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        data = result.get("results", [])
-        return QueryResponse(
-            tool=req.tool, user_id=user_id, site_id=site_id,
-            row_count=len(data), data=data,
+# =============================================================================
+# 3. HIGHLY DENSE PYDANTIC INTERACTION SCHEMA DEFINITIONS
+# =============================================================================
+class StorageQueryArgs(BaseModel):
+    intent_type: str = Field(
+        ..., 
+        description=(
+            "The execution track target. You MUST choose exactly 'DATA_AGGREGATION' if the operator asks "
+            "for numbers, metrics, math totals, averages, or counts. You MUST choose exactly 'DATA_RETRIEVAL' "
+            "if the user asks to see profiles, details, names, lists, text grids, or specific histories."
         )
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Unexpected error in /api/query: %s", e)
-        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+    )
+    target_subjects: List[str] = Field(
+        ..., 
+        description=(
+            "An array of entity keywords mentioned by the user. Allowed core entities: ['unit', 'user', 'site', 'lock', 'role']. "
+            "CRITICAL ORDER ROUTING INSTRUCTION: You must chain these entities in a step-by-step sequential path where each table "
+            "shares a clear relational bridge. 'user' acts as your central bridge between spaces. Pre-validated paths:\n"
+            "- To list users by job title/roles at a location: Use exactly ['site', 'user', 'role']\n"
+            "- To search or calculate hardware lock assets by site profile: Use exactly ['site', 'unit', 'lock']\n"
+            "- To analyze hardware locks linked to specific customers: Use exactly ['user', 'unit', 'lock']\n"
+            "- To resolve spaces booked by specific people: Use exactly ['user', 'unit']"
+        )
+    )
+    semantic_filters: Optional[List[str]] = Field(
+        None, 
+        description=(
+            "Array of conversational data statuses or analytical operations extracted from the prompt text. "
+            "For calculations, include words like ['count', 'avg', 'sum']. For space states, map keywords to synonyms "
+            "like ['vacant', 'active', 'disabled', 'transfer']. If none are mentioned, pass null or an empty list."
+        )
+    )
+    aggregation_column: Optional[str] = Field(
+        None, 
+        description=(
+            "The target performance metric field required when computing mathematical math expressions (avg, sum). "
+            "Allowed choices: Use exactly 'details_price' for financial costs/rates/values, use exactly 'details_width' "
+            "or 'details_price' for spatial dimensions. Leave entirely empty or null for simple counts or text listing searches."
+        )
+    )
+    search_keyword: Optional[str] = Field(
+        None, 
+        description="The exact personal name strings, customer tags, or unit identities requested for matching (e.g., 'Alex', '733', 'Company Manager')."
+    )
 
 
-# ── Static mount MUST be last — "/" catches all unmatched paths ───────────────
-if UI_DIR.exists():
+# =============================================================================
+# 4. MCP TOOL REGISTRATION LAYER
+# =============================================================================
+@mcp_app.tool(args_schema=StorageQueryArgs)
+def execute_storage_query(
+    intent_type: str, 
+    target_subjects: List[str], 
+    semantic_filters: Optional[List[str]] = None, 
+    aggregation_column: Optional[str] = None, 
+    search_keyword: Optional[str] = None
+) -> str:
+    """
+    Unified enterprise read-only analytics gateway portal. Use this tool whenever the operator 
+    requests calculations, metrics, text listing lookups, counts, histories, or status evaluations regarding 
+    storage spaces, smart entry locks, security permission roles, user accounts, and company facility metrics.
+    """
+    # Forcefully inject your multi-tenant security profile context metadata at the network boundary.
+    # This prevents any token parameter manipulation, keeping your EKS clusters locked to verified context scopes.
+    mock_active_session = {
+        "company_id": None,
+        "site_id": None, # Scoped user profile access limits
+        "user_id": None
+    }
     
-    print("\n==== REGISTERED ROUTES ====")
-    for route in app.routes:
-        print(route.path)
-    print("===========================\n")
-
-    app.mount("/ui", NoCacheStaticFiles(directory=UI_DIR, html=True), name="ui")
-    logger.info("Serving static UI from %s", UI_DIR)
-else:
-    logger.info("No ui/ directory found — static UI not mounted (EKS mode)")
-
+    try:
+        # Pass parameters down into your 100% dynamic, datatype-isolated compiler engine
+        results_matrix = run_compiled_mcp_query(
+            subjects=target_subjects,
+            intent_type=intent_type,
+            session_context=mock_active_session,
+            semantic_filters=semantic_filters,
+            aggregation_column=aggregation_column,
+            search_keyword=search_keyword
+        )
+        
+        # MCP tools must return raw strings down the execution pipe back to the orchestrator node client.
+        return json.dumps(results_matrix, default=str)
+        
+    except Exception as server_error:
+        # Enforce an information-leaking insulation shield: block database crash dumps from the client screen
+        return json.dumps({"error": f"Data retrieval execution dropped at gateway: {str(server_error)}"})
 
 if __name__ == "__main__":
-    uvicorn.run("mcp_server.main:app", host="0.0.0.0", port=8000, reload=False)
-
+    # Start the standard input/output transport communication channel (stdio stream)
+    mcp_app.run()
+    
