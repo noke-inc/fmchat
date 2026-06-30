@@ -1,9 +1,15 @@
-# agent_graph.py
+# agent_graph.py (Top Section - Fully Fixed)
 import json
 import os
 import sys
-import types
-from typing import TypedDict, Annotated, Sequence, Optional
+from typing import TypedDict, Annotated, Sequence, Optional, List
+
+# 1. DYNAMIC PATH INJECTION (Must run BEFORE custom project imports)
+mcp_server_absolute_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "eks", "mcp_server"))
+if mcp_server_absolute_directory not in sys.path:
+    sys.path.append(mcp_server_absolute_directory)
+
+# 2. CORE THIRD-PARTY FRAMEWORK IMPORTS
 from langchain_aws import ChatBedrock
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
@@ -11,6 +17,7 @@ from config import BEDROCK_MODEL_ID, BEDROCK_REGION
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import add_messages
 
+# 3. NOW DECOUPLED ENGINE IMPORTS AND SCHEMAS LOAD NATIVELY WITH ZERO ERRORS
 from data_retrieval_engine import SCHEMA_CATALOG, load_database_schema_config, run_compiled_mcp_query
 
 # Cache your static JSON configuration catalog matrix on startup
