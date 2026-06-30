@@ -1,49 +1,77 @@
-# agent_graph.py (Top Section - Fully Fixed)
+# agent_graph.py
 import json
 import os
 import sys
-from typing import TypedDict, Annotated, Sequence, Optional, List
-
-# 1. DYNAMIC PATH INJECTION (Must run BEFORE custom project imports)
+from typing import TypedDict, Annotated, Sequence, Optional, List,Literal
+from enum import Enum
+from pydantic import create_model
+# 1. ─── DYNAMIC PATH INJECTION (Must run BEFORE custom project imports) ───
 mcp_server_absolute_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "eks", "mcp_server"))
 if mcp_server_absolute_directory not in sys.path:
     sys.path.append(mcp_server_absolute_directory)
 
-# 2. CORE THIRD-PARTY FRAMEWORK IMPORTS
+# Load environment overrides from local file configurations before model calls occur
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=True)
+
+# Core LangChain and State Graph framework modules
 from langchain_aws import ChatBedrock
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langchain_core.tools import tool
-from config import BEDROCK_MODEL_ID, BEDROCK_REGION
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import add_messages
 
-# 3. NOW DECOUPLED ENGINE IMPORTS AND SCHEMAS LOAD NATIVELY WITH ZERO ERRORS
-from data_retrieval_engine import SCHEMA_CATALOG, load_database_schema_config, run_compiled_mcp_query
+import data_retrieval_engine
 
-# Cache your static JSON configuration catalog matrix on startup
+# 2. FIXED: Reference the absolute layout path through the live module pointer
 json_schema_absolute_path = os.path.join(
-    os.path.dirname(os.path.abspath(run_compiled_mcp_query.__code__.co_filename)), 
+    os.path.dirname(os.path.abspath(data_retrieval_engine.load_database_schema_config.__code__.co_filename)), 
     "database_schema.json"
 )
-load_database_schema_config(json_schema_absolute_path)
+
+# 3. Trigger your boot loader schema configuration factory
+data_retrieval_engine.load_database_schema_config(json_schema_absolute_path)
+
+# 3. Read the live object anywhere inside your code loops
+active_catalog = data_retrieval_engine.SCHEMA_CATALOG
+
+
+BEDROCK_REGION: str = os.getenv("BEDROCK_REGION", "us-east-2")
+BEDROCK_MODEL_ID: str = os.getenv("BEDROCK_MODEL_ID", "us.amazon.nova-micro-v1:0")
+
 
 # =============================================================================
-# 1. SHARED STATE STRUCTURE DEFINITION MATRIX
+# 2. SHARED CONVERSATIONAL GRAPH STATE MATRIX
 # =============================================================================
 class AgentState(TypedDict):
-    """Tracks the conversational memory stream alongside system context parameters."""
+    """Tracks conversational stream log array alongside system primitives."""
     messages: Annotated[list[BaseMessage], add_messages]
     user_id: int
-    site_id: Optional[list[int]]  # Array list matching your multi-value security needs
+    site_id: Optional[list[int]]
     company_id: Optional[int]
 
 
 # =============================================================================
-# 2. THE AWS BEDROCK LLM FACTORY CALL
+# 3. DEFINE THE FLAT-STRING OPTIMIZED TOOL INTERFACE SCHEMA
 # =============================================================================
-# ── LLM factory ──────────────────────────────────────────────────────────────
+@tool
+def execute_storage_query(
+    intent_type: str, 
+    target_subjects: str,       # Simple flat string parameters keep Amazon Nova completely stable
+    semantic_filters: Optional[str] = None, 
+    aggregation_column: Optional[str] = None, 
+    search_keyword: Optional[str] = None
+) -> str:
+    """
+    Unified read-only data gateway portal. Invoke this tool whenever the operator 
+    requests calculations, text record lookups, counts, or status metrics regarding 
+    any discovered system entities or schema categories.
+    """
+    raise NotImplementedError("This base tool signature is intercepted dynamically by the Graph node runtime.")
+
+
 def _llm() -> ChatBedrock:
-    print(f"\n🧠 INITIALIZING AMAZON BEDROCK LLM MODEL: {BEDROCK_MODEL_ID} in region {BEDROCK_REGION}\n")
+    """Returns a securely bound Amazon Bedrock client execution instance."""
     return ChatBedrock(
         model_id=BEDROCK_MODEL_ID,
         region_name=BEDROCK_REGION,
@@ -51,224 +79,272 @@ def _llm() -> ChatBedrock:
     )
 
 
-# =============================================================================
-# 3. EXPOSE THE DATABASE COMPILER PORTAL AS A BINDABLE LANGCHAIN TOOL
-# =============================================================================
-@tool
-def execute_storage_query(
-    intent_type: str, 
-    target_subjects: list[str], 
-    semantic_filters: list[str] = None, 
-    aggregation_column: str = None, 
-    search_keyword: str = None
-) -> str:
-    """
-    Unified read-only data gateway. Invoke this tool whenever the operator 
-    requests calculations, text record lookups, counts, or status metrics 
-    regarding storage spaces, smart locks, user accounts, roles, or facilities.
-    
-    CRITICAL PATH PARAMETERS:
-    - intent_type: Use 'DATA_AGGREGATION' for math/counts or 'DATA_RETRIEVAL' for details/lists.
-    - target_subjects: Connected path sequence list. Allowed core tokens: ['unit', 'user', 'site', 'lock', 'role']. 
-      You MUST chain them using 'user' as your middleman bridge (e.g. ['site', 'user', 'role']).
-    - semantic_filters: Keyword modifier filters (e.g. ['count', 'vacant', 'active', 'noke volt']).
-    - aggregation_column: Mathematical column identifier targeting metric costs/rates (e.g. 'details_price').
-    - search_keyword: Raw wildcard search string input (e.g. 'Alex', '733', 'Company Manager').
-    """
-    raise NotImplementedError("This base tool signature is intercepted dynamically by the Graph node runtime.")
-
-
-# =============================================================================
-# 4. SYSTEM LOGICAL GRAPH NODES (BUILT FROM SCRATCH)
-# =============================================================================
-# agent_graph.py (Update your shared string constant at the top of the file)
-
-_RELATIONAL_PATH_INSTRUCTIONS = (
-    "You MUST construct the 'target_subjects' array as a sequential relational pipeline path "
-    "where each entity directly shares a structural bridge with the next. Choose from these "
-    "pre-validated relationship order sequences:\n"
-    "- To pull or count users by permission roles at a location: Use exactly ['site', 'user', 'role']\n"
-    "- To locate smart locks or firmware codes by facility: Use exactly ['site', 'unit', 'lock']\n"
-    "- To track lock hardware versions linked to specific customers: Use exactly ['user', 'unit', 'lock']\n"
-    "- To resolve rental states or unit statuses for a specific user name: Use exactly ['site', 'user', 'unit']\n"
-    
-    # ─── ADD THIS SHORTER PATH BLUEPRINT FOR DIRECT UNIT LOOKUPS ───
-    "- To find or count units/spaces directly at a location without a known user name: Use exactly ['site', 'unit']\n\n"
-    
-    "CRITICAL PARAMETER CLASSIFICATION PROTOCOL:\n"
-    "1. You MUST check the 'column_metadata' registry map inside your schema. If an extracted text token "
-    "explicitly matches an available enum key name or a synonym tracking status array, you MUST place this token "
-    "inside the 'semantic_filters' array layout.\n"
-    "2. If an extracted token represents a literal variable value used for matching unique identity cells—such as "
-    "individual human first/last names, company emails, specific unit label designations, text descriptions, "
-    "or alphanumeric tracking sequences—you MUST place this value inside the 'search_keyword' parameter field.\n"
-    "3. Never mix these layers: Any identity strings or row-level identifier values belong in 'search_keyword'."
-)
-
-
 def call_bedrock_orchestrator(state: AgentState):
-    """The driving LLM node that analyzes prompts and structures tool parameters."""
+    """The driving LLM node that pre-identifies schemas and forces Nova into strict token extraction."""
+    from pydantic import BaseModel, Field, create_model
+    from enum import Enum
+    import re
+    
     messages = state["messages"]
+    last_human_prompt = messages[-1].content.lower().strip()
     
-    # Compile a clear, context-locked security instruction block
-    system_instruction = (
-        "You are the centralized analytical interface for the Noke Smart Entry infrastructure.\n"
-        "Your only resource for fetching system counts, metrics, and profile listings is 'execute_storage_query'.\n"
-        f"{_RELATIONAL_PATH_INSTRUCTIONS}\n\n"
-        "If a manager asks for a hardware model count, pass its concept title (e.g. 'noke volt') inside semantic_filters.\n"
-        "Do not invent column text fields. Do not expose physical tables or backend structures to the user."
+    # Clean out trailing punctuation symbols smoothly (e.g. converting "site?" natively to "site") [🔒]
+    clean_prompt_normalized = re.sub(r'[^\w\s]', ' ', last_human_prompt)
+    # Ensure inner white spaces are compacted uniformly
+    clean_prompt_normalized = " ".join(clean_prompt_normalized.split())
+    
+    # Create word tokens for fine-grained column mapping sweeps [🔒]
+    prompt_words = set(clean_prompt_normalized.split())
+    
+       # agent_graph.py (Replace Extraction Step A inside call_bedrock_orchestrator)
+    
+    # =============================================================================
+    # ─── EXTRACTION STEP A: LOCAL DUAL-LAYER METADATA DISCOVERY (UPGRADED) ───
+    # =============================================================================
+    discovered_entities = []
+    pruned_columns_vocabulary = []
+    
+    system_isolation_keys = list(state.keys())
+    if "messages" in system_isolation_keys: 
+        system_isolation_keys.remove("messages")
+        
+    import data_retrieval_engine
+    active_catalog = data_retrieval_engine.SCHEMA_CATALOG
+    
+    # Loop over every table entity registered inside your loaded schema JSON
+    for entity_name, entity_meta in active_catalog.get("entities", {}).items():
+        # Track if this entity gets activated either by its table name OR its column keywords
+        is_entity_active = False
+        
+        # Track 1: Sweep Top-Level Table Aliases
+        table_aliases_pool = entity_meta.get("aliases", []) + [entity_name]
+        clean_table_aliases = [str(alias).lower().strip() for alias in table_aliases_pool]
+        
+        for alias in clean_table_aliases:
+            escaped_alias = re.escape(alias)
+            if re.search(rf'\b{escaped_alias}\b', clean_prompt_normalized):
+                is_entity_active = True
+                break
+        
+        # Track 2: GLOBAL SWEEP - Scan inside column metadata and synonyms arrays [🔒]
+        # Even if "unit" isn't typed, matching "rental state" pulls the unit table into view!
+        allowed_cols_dict = entity_meta.get("allowed_columns", {})
+        column_metadata_dict = entity_meta.get("column_metadata", {})
+        
+        active_fields_this_table = []
+        
+        for col_name, col_props in allowed_cols_dict.items():
+            # Extract configured aliases for this specific property field column
+            col_meta_block = column_metadata_dict.get(col_name, {})
+            col_aliases = col_meta_block.get("aliases", []) or []
+            
+            # Extract child enum values (like checking if user typed "vacant", "active", etc.)
+            enum_synonyms = []
+            for enum_key, enum_list in col_meta_block.get("enum_map", {}).items():
+                enum_synonyms.extend(enum_list)
+                
+            # Flatten all possible structural names for this specific database column cell
+            col_pool = (
+                {str(ca).lower().strip() for ca in col_aliases} | 
+                {col_name.lower()} | 
+                {str(es).lower().strip() for es in enum_synonyms}
+            )
+            # Match condition: Always keep tenant isolation keys, or match column names/synonyms
+            if col_name in system_isolation_keys or any(re.search(rf'\b{re.escape(c)}\b', clean_prompt_normalized) for c in col_pool):
+                active_fields_this_table.append(f"  - Field: Table/Concept '{entity_name}' property column: '{col_name}' (Type: {col_props.get('type')})")
+                # Found a valid column synonym mentioned in the prompt! Activate the parent table!
+                if col_name not in system_isolation_keys:
+                    is_entity_active = True
+                    
+        # If either Track 1 or Track 2 passed, register the table and append its active fields
+        if is_entity_active:
+            if entity_name not in discovered_entities:
+                discovered_entities.append(entity_name)
+                
+            # Guarantee that every discovered entity retains its core relational identity fields 'id' or 'name'
+            for identity_col in ["id", "name"]:
+                if identity_col in allowed_cols_dict:
+                    identity_str = f"  - Field: Table/Concept '{entity_name}' property column: '{identity_col}' (Type: {allowed_cols_dict[identity_col].get('type')})"
+                    if identity_str not in pruned_columns_vocabulary:
+                        pruned_columns_vocabulary.append(identity_str)
+                        
+            # Append all specific fields that matched the user's prompt text
+            for active_field_str in active_fields_this_table:
+                if active_field_str not in pruned_columns_vocabulary:
+                    pruned_columns_vocabulary.append(active_field_str)
+
+
+    # ─── EXTRACTION STEP B: DYNAMIC FACT TABLE SELECTION ───
+    fact_table_entity = discovered_entities if discovered_entities else "unresolved"
+    max_relationship_density = -1
+    for candidate in discovered_entities:
+        relationship_count = len(active_catalog["entities"].get(candidate, {}).get("relationships", {}))
+        if relationship_count > max_relationship_density:
+            max_relationship_density = relationship_count
+            fact_table_entity = candidate
+
+    vocabulary_text_block = "\n".join(pruned_columns_vocabulary)
+
+    print("\n" + "🔍" + "─"*30 + " 100% DATA-DRIVEN PRE-IDENTIFICATION SWEEP " + "─"*30, file=sys.stderr)
+    print(f"📁 Dynamically Discovered Intents (Entities): {discovered_entities}", file=sys.stderr)
+    print(f"📊 Mathematically Derived Fact Table Anchor: '{fact_table_entity}'", file=sys.stderr)
+    print("─"*104 + "\n", file=sys.stderr)
+
+    # =============================================================================
+    # ─── EXTRACTION STEP C: MANUFACTURE STRICT DYNAMIC EXTRACTION SHIELD ───
+    # =============================================================================
+    class StrictIntentType(str, Enum):
+        DATA_AGGREGATION = "DATA_AGGREGATION"
+        DATA_RETRIEVAL = "DATA_RETRIEVAL"
+    
+        # agent_graph.py (Update the search_keyword field inside Extraction Step C)
+    
+    expected_sequence_token = ", ".join(discovered_entities)
+    
+    class StrictIntentType(str, Enum):
+        DATA_AGGREGATION = "DATA_AGGREGATION"
+        DATA_RETRIEVAL = "DATA_RETRIEVAL"
+    
+    # Dynamically compile an ironclad schema payload contract on the fly
+    DynamicNovaArgsSchema = create_model(
+        "DynamicNovaArgsSchema",
+        intent_type=(StrictIntentType, Field(
+            ..., 
+            description="Operational track target. Use 'DATA_AGGREGATION' strictly for math/counts. Use 'DATA_RETRIEVAL' for details grids."
+        )),
+        
+        # ─── THE UNBREAKABLE LITERAL FENCE: Enforces exact, untruncated string mapping! ───
+        target_subjects=(Literal[expected_sequence_token], Field(
+            ..., 
+            description=f"The active table targets required for this query. You MUST choose exactly the string value: '{expected_sequence_token}'."
+        )),
+        
+        semantic_filters=(Optional[str], Field(
+            None, 
+            description="Comma-separated string listing modifier status terms or math actions (e.g. 'count, active')."
+        )),
+        search_keyword=(Optional[str], Field(
+            None, 
+            description=(
+                "Wildcard search text matching specific names, descriptions, or tracking labels. "
+                "CRITICAL PARALLEL EXECUTION GUARD: You are strictly forbidden from calling this tool multiple times. "
+                "If the operator mentions multiple entities or locations, you MUST combine them into a single comma-separated string."
+            )
+        )),
+        aggregation_column=(Optional[str], Field(
+            None, 
+            description="The numerical metric property field required if running calculation total functions."
+        ))
     )
+
+    # Re-declare the local tool signature mapping to bind the rigid schema contract natively
+    @tool(args_schema=DynamicNovaArgsSchema)
+    def execute_storage_query(
+        intent_type: StrictIntentType, 
+        target_subjects: str,  # Keeps tool parameter flat for safe LangChain serialization
+        semantic_filters: Optional[str] = None, 
+        search_keyword: Optional[str] = None, 
+        aggregation_column: Optional[str] = None
+    ) -> str:
+        """Unified enterprise read-only data gateway portal for executing pre-identified system lookups."""
+        raise NotImplementedError()
+    # =============================================================================
+    # ─── EXTRACTION STEP D: CONTEXT-LOCKED TEXT BLUEPRINT INJECTION ───
+    # =============================================================================
+    system_instruction = (
+        "You are the data parameter extraction gateway for the enterprise information infrastructure.\n"
+        "Your sole task is to identify requested concepts and isolate text filters.\n"
+        "You MUST choose valid options matching the provided schema fields.\n\n"
+        "🔒 ENTERPRISE BOUNDARY PROTECTION SHIELD:\n"
+        "We have analyzed our data catalog and pre-identified your relevant schema rules locally.\n"
+        f"The primary driver Fact Table for this request path is computed as: '{fact_table_entity}'\n"
+        "The only valid system database configurations related to the operator's current request are:\n"
+        f"{vocabulary_text_block}\n\n"
+        "CRITICAL EXTRACTION CONSTRAINTS:\n"
+        f"1. Inside the 'target_subjects' string field, you MUST pass a comma-separated list choosing exclusively from this precise list: {discovered_entities}\n"
+        "   - Never invent concepts. If the question asks about users and site, write exactly: 'site, user'\n"
+        "2. Inside the 'semantic_filters' string field, pass your operational modifiers as a comma-separated string (e.g. 'count, active').\n"
+        "3. Route specific proper human names, emails, unique labels, or identifier codes exclusively to 'search_keyword'.\n"
+        "4. Do not invent non-existent column fields. Do not hypothesize parameters outside the provided context block."
+    )
+    # ─── ADD THIS PRINT BLOCK RIGHT HERE TO SEE THE LIVE OUTGOING LLM REQUEST ───
+    print("\n" + "📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
+    print(system_instruction, file=sys.stderr)
+    print(f"💬 Active User Entry Payload: '{messages[-1].content}'", file=sys.stderr)
+    print("─"*100 + "\n", file=sys.stderr)
+    # ───────────────────────────────────────────────────────────────────────────
     
-    # Initialize your Amazon Bedrock model instance and bind your secure tool schema contract
     llm_with_tools = _llm().bind_tools([execute_storage_query])
-    print(f"\n🧠 INITIALIZING AMAZON BEDROCK LLM MODEL: {BEDROCK_MODEL_ID} in region {BEDROCK_REGION}\n")
-    
-    # Prepend the system prompt instruction to the active conversation history track
     complete_message_track = [SystemMessage(content=system_instruction)] + list(messages)
     
-    # Dispatch parameters down to AWS Bedrock runtime layers
     response_message = llm_with_tools.invoke(complete_message_track)
-    print(f"\n🧠 AMAZON BEDROCK LLM MODEL RESPONSE: {response_message}\n")
     return {"messages": [response_message]}
 
 
-def execute_graph_tools(state: AgentState):
-    """Secure backend execution bridge node that injects token contexts into your query compiler."""
+
+# agent_graph.py (Update your simulate_terminal_synthesis function block)
+
+def simulate_terminal_synthesis(state: AgentState):
+    """Bypasses MCP execution and aggregates conversational outputs for pure tuning inspection."""
     messages = state["messages"]
     last_message = messages[-1]
     
-    # Package your active session values to align with data retrieval requirements
-    # Translates your state primitives into your core query engine session context dictionary
-    computed_session_context = {
-        "company_id": state.get("company_id"),
-        "site_id": state.get("site_id"),
-        "user_id": state.get("user_id")
-    }
-    
-    tool_responses = []
-    for tool_call in last_message.tool_calls:
-        if tool_call["name"] == "execute_storage_query":
-            args = tool_call["args"]
-
-            print("\n" + "═"*40 + " OUTGOING MCP TOOL ARGUMENTS JSON " + "═"*40, file=sys.stderr)
-            print(json.dumps(args, indent=2), file=sys.stderr)
-            print("═"*114 + "\n", file=sys.stderr)
-            try:
-                # ─── MULTI-TENANT CONTEXT INJECTION GUARD SHIELD ───
-                # Overwrites parameters with state variables to block user injection attempts
-                db_rows_matrix = run_compiled_mcp_query(
-                    subjects=args.get("target_subjects", []),
-                    intent_type=args.get("intent_type"),
-                    session_context=computed_session_context,
-                    semantic_filters=args.get("semantic_filters"),
-                    aggregation_column=args.get("aggregation_column"),
-                    search_keyword=args.get("search_keyword")
-                )
-                string_payload = json.dumps(db_rows_matrix, default=str)
-            except Exception as query_fault:
-                string_payload = json.dumps({"error": f"Query engine processing dropped: {str(query_fault)}"})
-                
-            tool_responses.append(
-                ToolMessage(
-                    content=string_payload,
-                    tool_call_id=tool_call["id"],
-                    name=tool_call["name"]
-                )
-            )
-            
-    return {"messages": tool_responses}
-
-
-def generate_conversational_response(state: AgentState):
-    """Synthesizes raw database JSON row data arrays back into elegant plain sentences."""
-    messages = state["messages"]
-    
-    # Hand the complete historical message track (including the raw database row payloads) 
-    # back into Bedrock to generate a conversational, human-friendly summary text response
-    conversational_reply = _llm().invoke(messages)
-    return {"messages": [conversational_reply]}
-
-
-# =============================================================================
-# 5. DEFINE CONDITIONAL ROUTING ROUTERS
-# =============================================================================
-def route_next_node(state: AgentState):
-    """Inspects messages to decide whether to trigger tools or close the state loop."""
-    messages = state["messages"]
-    last_message = messages[-1]
-    
+    # Intercept and display the flat parameter payload generated by Amazon Nova
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "execute_tools"
-    return END
+        for tool_call in last_message.tool_calls:
+            print("🤖" + "─"*30 + " AMAZON NOVA INTERPOLATED TOOL PAYLOAD " + "─"*30, file=sys.stderr)
+            print(json.dumps(tool_call["args"], indent=2), file=sys.stderr)
+            print("─"*100 + "\n", file=sys.stderr)
+            
+    # ─── FIXED: Dynamic Amazon Nova Token Telemetry Extraction ─── [▲]
+    # Nova passes standard dictionary token structures inside 'usage_metadata' natively!
+    usage_info = getattr(last_message, "usage_metadata", {}) or {}
+    
+    # Fallback to response_metadata if usage_metadata is missing
+    if not usage_info and hasattr(last_message, "response_metadata"):
+        usage_info = last_message.response_metadata.get("usage", {}) or {}
+        
+    print("📊" + "─"*35 + " STREAM TELEMETRY METRICS " + "─"*35, file=sys.stderr)
+    print(f"   📥 Input Tokens Scanned  : {usage_info.get('input_tokens', 'N/A')}", file=sys.stderr)
+    print(f"   📤 Output Tokens Written : {usage_info.get('output_tokens', 'N/A')}", file=sys.stderr)
+    print(f"   📊 Combined Request Toll : {usage_info.get('total_tokens', 'N/A')} tokens consumed.", file=sys.stderr)
+    print("─"*100 + "\n", file=sys.stderr)
+    
+    return {"messages": []}
 
-
-# =============================================================================
-# 6. ASSEMBLE THE COMPLETE STATE MACHINE WORKFLOW GRAPH
-# =============================================================================
+#=============================================================================
+# 5. ASSEMBLE THE COMPLETE WORKFLOW STATE MACHINE
+#=============================================================================
 workflow = StateGraph(AgentState)
-
-# Register workflow operational nodes
+# Register workflow processing nodes
 workflow.add_node("bedrock_orchestrator", call_bedrock_orchestrator)
-workflow.add_node("execute_tools", execute_graph_tools)
-workflow.add_node("conversational_synthesis", generate_conversational_response)
-
-# Attach graph entry connections
+workflow.add_node("simulate_synthesis", simulate_terminal_synthesis)
+# Attach graph entry points
 workflow.add_edge(START, "bedrock_orchestrator")
-
-# Hook routing conditional rule boundaries
-workflow.add_conditional_edges(
-    "bedrock_orchestrator",
-    route_next_node,
-    {
-        "execute_tools": "execute_tools",
-        END: END
-    }
-)
-
-# Pipe data rows into synthesis before completion loops terminate
-workflow.add_edge("execute_tools", "conversational_synthesis")
-workflow.add_edge("conversational_synthesis", END)
-
-# Compile into a ready-to-run state machine application object
+workflow.add_edge("bedrock_orchestrator", "simulate_synthesis")
+workflow.add_edge("simulate_synthesis", END)
+# Compile into an executable state graph application object
 agent_brain_app = workflow.compile()
 
-
-# =============================================================================
-# --- LOCAL PRODUCTION LIVE CONNECTION TESTING HARNESS ---
-# =============================================================================
-
+#=============================================================================
+# --- LOCAL PRODUCTION PLAYGROUND TESTING MATRIX CONTROL CENTER ---
+#=============================================================================
 if __name__ == "__main__":
     print("\n" + "═"*80)
-    print("🧠 LANGGRAPH AGENT ORCHESTRATOR CONNECTED TO LIVE AMAZON BEDROCK RUNTIME")
+    print("🔬 INITIALIZING 100% NON-HARDCODED METADATA TUNER FOR AMAZON NOVA")
     print("═"*80)
-    
-    # Simulating a live user prompt string input targeting your actual hardware models
-    manager_prompt_input = "Total number of units across sites Mateo's House and Mateo's Office?"
-    
-    # FIXED: Explicitly use the native LangChain HumanMessage constructor cleanly 
-    # to avoid colliding with any 'types' module namespaces imports from the top of the file!
-    from langchain_core.messages import HumanMessage
-    
-    # Initialize the active state values matching your system specifications
-    initial_graph_state = {
-        "messages": [HumanMessage(content=manager_prompt_input)],        
-        "site_id": [1001005, 1001009]
-    }
-    
-    print(f"💬 MANAGER INPUT PROMPT: '{manager_prompt_input}'")
-    print(f"🔒 ACCOUNT PRIVILEGES ENFORCED:  Sites {initial_graph_state['site_id']}\n")
-    
+    # ─── CHANGE THE PROMPT HERE TO SCROLL THROUGH ALL INTENT SCENARIOS NATIVELY ───
+    test_user_prompt = "what is the status of unit LA879 ?"
+    # test_user_prompt = "What is the unit status for Service Unit 2256149?"
+    # test_user_prompt = "rental state for user Johnny jons"
+    # test_user_prompt = "what is the email of the user who is assigned to the unit LA879? / 2223399"
+    initial_graph_state = {"messages": [HumanMessage(content=test_user_prompt)],
+                           "user_id": None,
+                           "site_id":[2223399],
+                           "company_id": None}
+    print(f"💬 MANAGER INPUT PROMPT: '{test_user_prompt}'")
+    print(f"🔒 PRIVILEGES ENFORCED: User {initial_graph_state['user_id']} | Sites {initial_graph_state['site_id']}\n")
     try:
-        # Dispatch the conversational payload straight into the graph compiler engine
-        final_state_output = agent_brain_app.invoke(initial_graph_state)
-        
-        print("\n" + "═"*80)
-        print("🏁 CONVERSATIONAL AGENT DIALOGUE COMPLETION SUMMARY SUCCESSFUL")
-        print("═"*80)
-        print(f"🤖 BEDROCK AGENT ANSWER: \"{final_state_output['messages'][-1].content}\"")
-        print("═"*80 + "\n")
-        
-    except Exception as bedrock_connection_fault:
-        print(f"\n💥 PIPELINE CRASH: Could not handshake with AWS Bedrock endpoints.")
-        print(f"   Ensure AWS credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) are exported in your terminal context.")
-        print(f"   Details: {bedrock_connection_fault}\n")
+        agent_brain_app.invoke(initial_graph_state)
+    except Exception as e:
+        print(f"\n💥 RUNTIME DROPPED: {str(e)}\n")

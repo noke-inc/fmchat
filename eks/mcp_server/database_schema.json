@@ -7,7 +7,7 @@
   "entities": {
     "unit": {
       "physical_table": "v2_units",
-      "aliases": ["unit", "units", "storage unit", "space", "spaces", "locker", "lockers"],
+      "aliases": ["unit", "units", "storage unit", "space", "spaces", "locker", "lockers","lock", "locks"],
       "allowed_columns": {
         "id": { "type": "int" },
         "name": { "type": "varchar" },
@@ -43,11 +43,12 @@
     },
     "user": {
       "physical_table": "users",
-      "aliases": ["user", "users", "customer", "customers", "tenant", "tenants"],
+      "aliases": ["user", "users", "customer", "customers", "tenant", "tenants","who", "whom", "whose", "assigned to"],
       "allowed_columns": {
         "id": { "type": "int" },
         "first_name": { "type": "varchar" },
-        "last_name": { "type": "varchar" },       
+        "last_name": { "type": "varchar" }, 
+        "email": { "type": "varchar" },
         "type": { "type": "varchar" },
         "state": { "type": "varchar" },
         "created_date": { "type": "timestamp" }        
