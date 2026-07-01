@@ -95,9 +95,7 @@ def call_bedrock_orchestrator(state: AgentState):
     
     # Create word tokens for fine-grained column mapping sweeps [🔒]
     prompt_words = set(clean_prompt_normalized.split())
-    
-       # agent_graph.py (Replace Extraction Step A inside call_bedrock_orchestrator)
-    
+          
     # =============================================================================
     # ─── EXTRACTION STEP A: LOCAL DUAL-LAYER METADATA DISCOVERY (UPGRADED) ───
     # =============================================================================
@@ -334,10 +332,14 @@ if __name__ == "__main__":
     print("🔬 INITIALIZING 100% NON-HARDCODED METADATA TUNER FOR AMAZON NOVA")
     print("═"*80)
     # ─── CHANGE THE PROMPT HERE TO SCROLL THROUGH ALL INTENT SCENARIOS NATIVELY ───
-    test_user_prompt = "what is the status of unit LA879 ?"
-    # test_user_prompt = "What is the unit status for Service Unit 2256149?"
-    # test_user_prompt = "rental state for user Johnny jons"
-    # test_user_prompt = "what is the email of the user who is assigned to the unit LA879? / 2223399"
+    #test_user_prompt = "what is the status of unit LA879 ?"
+    #test_user_prompt = "What is the unit status for Service Unit 2256149?"
+    # test_user_prompt = "rental state for user Johnny?"
+    #test_user_prompt = "what is the email of the user who is assigned to the unit LA879?"
+    #test_user_prompt = "How many open units?"
+    # Inside agent_graph.py -> __main__ block
+    test_user_prompt = "What is the monday open timing for site Mateo's House?"
+
     initial_graph_state = {"messages": [HumanMessage(content=test_user_prompt)],
                            "user_id": None,
                            "site_id":[2223399],

@@ -2,36 +2,121 @@
   "_meta": {
     "version": "1.1.0",
     "scope": "Enterprise Storage Engine Integration - Strict Datatypes Iteration",
-    "tables_allowed": ["v2_units", "users", "users_roles", "sites", "v2_locks", "v2_locks_to_units"]
+    "tables_allowed": [
+      "v2_units",
+      "users",
+      "users_roles",
+      "sites",
+      "v2_locks",
+      "v2_locks_to_units"
+    ]
   },
   "entities": {
     "unit": {
       "physical_table": "v2_units",
-      "aliases": ["unit", "units", "storage unit", "space", "spaces", "locker", "lockers","lock", "locks"],
+      "aliases": [
+        "unit",
+        "units",
+        "storage unit",
+        "space",
+        "spaces",
+        "locker",
+        "lockers",
+        "lock",
+        "locks"
+      ],
       "allowed_columns": {
-        "id": { "type": "int" },
-        "name": { "type": "varchar" },
-        "rental_state": { "type": "varchar" },
-        "access_type": { "type": "varchar" },
-        "details_width": { "type": "float" },
-        "details_depth": { "type": "float" },
-        "details_price": { "type": "float" },
-        "company_id": { "type": "int" },
-        "site_id": { "type": "int" }
+        "id": {
+          "type": "int"
+        },
+        "name": {
+          "type": "varchar"
+        },
+        "rental_state": {
+          "type": "varchar"
+        },
+        "access_type": {
+          "type": "varchar"
+        },
+        "details_width": {
+          "type": "float"
+        },
+        "details_depth": {
+          "type": "float"
+        },
+        "details_price": {
+          "type": "float"
+        },
+        "company_id": {
+          "type": "int"
+        },
+        "site_id": {
+          "type": "int"
+        }
       },
       "allowed_aggregations": {
-        "count": { "sql_function": "COUNT(*)", "output_column": "count" },
-        "sum": { "sql_function": "SUM({column})", "requires_column": true, "output_column": "total", "allowed_columns": ["details_price", "details_width", "details_depth"] },
-        "avg": { "sql_function": "AVG({column})", "requires_column": true, "output_column": "average", "allowed_columns": ["details_price", "details_width", "details_depth"] }
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        },
+        "sum": {
+          "sql_function": "SUM({column})",
+          "requires_column": true,
+          "output_column": "total",
+          "allowed_columns": [
+            "details_price",
+            "details_width",
+            "details_depth"
+          ]
+        },
+        "avg": {
+          "sql_function": "AVG({column})",
+          "requires_column": true,
+          "output_column": "average",
+          "allowed_columns": [
+            "details_price",
+            "details_width",
+            "details_depth"
+          ]
+        }
       },
       "column_metadata": {
         "rental_state": {
-          "aliases": ["status", "state", "rental status", "availability", "occupancy"],
-          "allowed_values": ["available", "in use", "repo"],
+          "aliases": [
+            "status",
+            "state",
+            "rental status",
+            "availability",
+            "occupancy"
+          ],
+          "allowed_values": [
+            "available",
+            "in use",
+            "repo"
+          ],
           "enum_map": {
-            "available": ["available", "free", "open", "empty", "vacant"],
-            "in use": ["inuse", "overlock", "testing", "gatelock", "auction-smartentry", "occupied", "rented", "taken", "active"],
-            "repo": ["repo", "auction"]
+            "available": [
+              "available",
+              "free",
+              "open",
+              "empty",
+              "vacant"
+            ],
+            "in use": [
+              "inuse",
+              "overlock",
+              "testing",
+              "gatelock",
+              "auction-smartentry",
+              "occupied",
+              "rented",
+              "taken",
+              "active"
+            ],
+            "repo": [
+              "repo",
+              "auction"
+            ]
           }
         }
       },
@@ -43,26 +128,71 @@
     },
     "user": {
       "physical_table": "users",
-      "aliases": ["user", "users", "customer", "customers", "tenant", "tenants","who", "whom", "whose", "assigned to"],
+      "aliases": [
+        "user",
+        "users",
+        "customer",
+        "customers",
+        "tenant",
+        "tenants",
+        "who",
+        "whom",
+        "whose",
+        "assigned to"
+      ],
       "allowed_columns": {
-        "id": { "type": "int" },
-        "first_name": { "type": "varchar" },
-        "last_name": { "type": "varchar" }, 
-        "email": { "type": "varchar" },
-        "type": { "type": "varchar" },
-        "state": { "type": "varchar" },
-        "created_date": { "type": "timestamp" }        
+        "id": {
+          "type": "int"
+        },
+        "first_name": {
+          "type": "varchar"
+        },
+        "last_name": {
+          "type": "varchar"
+        },
+        "email": {
+          "type": "varchar"
+        },
+        "type": {
+          "type": "varchar"
+        },
+        "state": {
+          "type": "varchar"
+        },
+        "created_date": {
+          "type": "timestamp"
+        }
       },
       "allowed_aggregations": {
-        "count": { "sql_function": "COUNT(*)", "output_column": "count" }
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        }
       },
       "column_metadata": {
         "state": {
-          "aliases": ["user status", "account state", "account status", "active"],
-          "allowed_values": ["active", "inactive"],
+          "aliases": [
+            "user status",
+            "account state",
+            "account status",
+            "active"
+          ],
+          "allowed_values": [
+            "active",
+            "inactive"
+          ],
           "enum_map": {
-            "active": ["active", "verified", "logged_in"],
-            "inactive": ["inactive", "suspended", "frozen", "banned"]
+            "active": [
+              "active",
+              "verified",
+              "logged_in"
+            ],
+            "inactive": [
+              "inactive",
+              "suspended",
+              "frozen",
+              "banned"
+            ]
           }
         }
       },
@@ -73,12 +203,27 @@
     },
     "site": {
       "physical_table": "sites",
-      "aliases": ["site", "sites", "facility", "facilities", "location", "property"],
+      "aliases": [
+        "site",
+        "sites",
+        "facility",
+        "facilities",
+        "location",
+        "property"
+      ],
       "allowed_columns": {
-        "id": { "type": "int" },
-        "name": { "type": "varchar" },
-        "city": { "type": "varchar" },
-        "state": { "type": "varchar" }
+        "id": {
+          "type": "int"
+        },
+        "name": {
+          "type": "varchar"
+        },
+        "city": {
+          "type": "varchar"
+        },
+        "state": {
+          "type": "varchar"
+        }
       },
       "relationships": {
         "unit": "v2_units.site_id = sites.id",
@@ -87,50 +232,275 @@
     },
     "lock": {
       "physical_table": "v2_locks",
-       "aliases": ["lock", "locks", "hardware", "smart lock", "padlock", "padlocks"],
+      "aliases": [
+        "lock",
+        "locks",
+        "hardware",
+        "smart lock",
+        "padlock",
+        "padlocks"
+      ],
       "allowed_columns": {
-        "id": { "type": "int" },
-        "name": { "type": "varchar" },
-        "ble_hw_version": { "type": "varchar" },
-        "company_id": { "type": "int" }
+        "id": {
+          "type": "int"
+        },
+        "name": {
+          "type": "varchar"
+        },
+        "ble_hw_version": {
+          "type": "varchar"
+        },
+        "company_id": {
+          "type": "int"
+        }
       },
       "relationships": {
         "unit": "v2_locks_to_units.lock_id = v2_locks.id"
-      }, 
+      },
       "column_metadata": {
         "ble_hw_version": {
-          "aliases": ["version", "hardware type", "lock model", "hardware version", "model"],
-          "allowed_values": ["noke volt", "noke one", "noke contact", "noke screen", "noke ion", "noke pad"],
+          "aliases": [
+            "version",
+            "hardware type",
+            "lock model",
+            "hardware version",
+            "model"
+          ],
+          "allowed_values": [
+            "noke volt",
+            "noke one",
+            "noke contact",
+            "noke screen",
+            "noke ion",
+            "noke pad"
+          ],
           "enum_map": {
-            "noke volt": ["3e", "2e", "1w", "noke volt", "volt"],
-            "noke one": ["1a", "noke one", "one"],
-            "noke contact": ["2a", "noke contact", "contact"],
-            "noke screen": ["4k", "noke screen", "screen"],
-            "noke ion": ["4e", "noke ion", "ion"],
-            "noke pad": ["3k", "noke pad", "padlock", "pad"]
+            "noke volt": [
+              "3e",
+              "2e",
+              "1w",
+              "noke volt",
+              "volt"
+            ],
+            "noke one": [
+              "1a",
+              "noke one",
+              "one"
+            ],
+            "noke contact": [
+              "2a",
+              "noke contact",
+              "contact"
+            ],
+            "noke screen": [
+              "4k",
+              "noke screen",
+              "screen"
+            ],
+            "noke ion": [
+              "4e",
+              "noke ion",
+              "ion"
+            ],
+            "noke pad": [
+              "3k",
+              "noke pad",
+              "padlock",
+              "pad"
+            ]
           }
         }
       }
     },
     "role": {
       "physical_table": "roles",
-      "aliases": ["role", "roles", "permission", "permissions", "job title", "access level"],
+      "aliases": [
+        "role",
+        "roles",
+        "permission",
+        "permissions",
+        "job title",
+        "access level"
+      ],
       "allowed_columns": {
-        "id": { "type": "int" },
-        "name": { "type": "varchar" }
+        "id": {
+          "type": "int"
+        },
+        "name": {
+          "type": "varchar"
+        }
       },
       "relationships": {
         "user": "users_roles.role_id = roles.id"
       }
+    },
+    "site_hours": {
+      "physical_table": "site_hours_suite",
+      "aliases": [
+        "hour",
+        "hours",
+        "time",
+        "timing",
+        "schedule",
+        "open hour",
+        "close hour",
+        "open hours",
+        "close hours",
+        "opening hours",
+        "closing hours",
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "weekend",
+        "weekdays",
+        "operation hours",
+        "operational hours"
+      ],
+      "allowed_columns": {
+        "id": {
+          "type": "int"
+        },
+        "site_id": {
+          "type": "int"
+        },
+        "name": {
+          "type": "varchar"
+        },
+        "sunday_open": {
+          "type": "datetime"
+        },
+        "sunday_close": {
+          "type": "datetime"
+        },
+        "monday_open": {
+          "type": "datetime"
+        },
+        "monday_close": {
+          "type": "datetime"
+        },
+        "tuesday_open": {
+          "type": "datetime"
+        },
+        "tuesday_close": {
+          "type": "datetime"
+        },
+        "wednesday_open": {
+          "type": "datetime"
+        },
+        "wednesday_close": {
+          "type": "datetime"
+        },
+        "thursday_open": {
+          "type": "datetime"
+        },
+        "thursday_close": {
+          "type": "datetime"
+        },
+        "friday_open": {
+          "type": "datetime"
+        },
+        "friday_close": {
+          "type": "datetime"
+        },
+        "saturday_open": {
+          "type": "datetime"
+        },
+        "saturday_close": {
+          "type": "datetime"
+        },
+        "default_24_hours": {
+          "type": "int"
+        },
+        "position": {
+          "type": "int"
+        }
+      },
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        }
+      },
+      "column_metadata": {
+        "monday_open": {
+          "aliases": [
+            "monday open",
+            "monday opening time",
+            "mon open"
+          ]
+        },
+        "monday_close": {
+          "aliases": [
+            "monday close",
+            "monday closing time",
+            "mon close"
+          ]
+        },
+        "sunday_open": {
+          "aliases": [
+            "sunday open",
+            "sunday opening time",
+            "sun open",
+            "weekend timing"
+          ]
+        },
+        "saturday_open": {
+          "aliases": [
+            "saturday open",
+            "saturday opening time",
+            "sat open",
+            "weekend timing"
+          ]
+        },
+        "default_24_hours": {
+          "aliases": [
+            "24 hours",
+            "all day",
+            "always open",
+            "day and night"
+          ]
+        }
+      },
+      "relationships": {
+        "site": "site_hours_suite.site_id = sites.id"
+      }
     }
   },
   "junction_bridges": {
-    "unit.user": { "via_table": "users_units_parameters", "step_1": "users_units_parameters.unit_id = v2_units.id", "step_2": "users_units_parameters.user_id = users.id" },
-    "user.unit": { "via_table": "users_units_parameters", "step_1": "users_units_parameters.user_id = users.id", "step_2": "users_units_parameters.unit_id = v2_units.id" },
-    "user.site": { "via_table": "users_roles", "step_1": "users_roles.user_id = users.id", "step_2": "users_roles.site_id = sites.id" },
-    "site.user": { "via_table": "users_roles", "step_1": "users_roles.site_id = sites.id", "step_2": "users_roles.user_id = users.id" },
-    "unit.lock": { "via_table": "v2_locks_to_units", "step_1": "v2_locks_to_units.unit_id = v2_units.id", "step_2": "v2_locks_to_units.lock_id = v2_locks.id" },
-    "lock.unit": { "via_table": "v2_locks_to_units", "step_1": "v2_locks_to_units.lock_id = v2_locks.id", "step_2": "v2_locks_to_units.unit_id = v2_units.id" },
+    "unit.user": {
+      "via_table": "users_units_parameters",
+      "step_1": "users_units_parameters.unit_id = v2_units.id",
+      "step_2": "users_units_parameters.user_id = users.id"
+    },
+    "user.unit": {
+      "via_table": "users_units_parameters",
+      "step_1": "users_units_parameters.user_id = users.id",
+      "step_2": "users_units_parameters.unit_id = v2_units.id"
+    },
+    "user.site": {
+      "via_table": "users_roles",
+      "step_1": "users_roles.user_id = users.id",
+      "step_2": "users_roles.site_id = sites.id"
+    },
+    "site.user": {
+      "via_table": "users_roles",
+      "step_1": "users_roles.site_id = sites.id",
+      "step_2": "users_roles.user_id = users.id"
+    },
+    "unit.lock": {
+      "via_table": "v2_locks_to_units",
+      "step_1": "v2_locks_to_units.unit_id = v2_units.id",
+      "step_2": "v2_locks_to_units.lock_id = v2_locks.id"
+    },
+    "lock.unit": {
+      "via_table": "v2_locks_to_units",
+      "step_1": "v2_locks_to_units.lock_id = v2_locks.id",
+      "step_2": "v2_locks_to_units.unit_id = v2_units.id"
+    },
     "user.role": {
       "via_table": "users_roles",
       "step_1": "users_roles.user_id = users.id",
@@ -140,12 +510,32 @@
       "via_table": "users_roles",
       "step_1": "users_roles.role_id = roles.id",
       "step_2": "users_roles.user_id = users.id"
+    },
+    "unit.site_hours": {
+      "via_table": "v2_units",
+      "step_1": "v2_units.id = v2_units.id",
+      "step_2": "site_hours_suite.site_id = v2_units.site_id"
+    },
+    "user.site_hours": {
+      "via_table": "users_roles",
+      "step_1": "users_roles.user_id = users.id",
+      "step_2": "site_hours_suite.site_id = users_roles.site_id"
     }
   },
   "safety": {
     "max_join_depth": 3,
     "max_limit_ceiling": 50,
-    "allowed_operators": ["=", "IN", "LIKE"],
-    "deny_columns": ["password", "pin", "session_salt", "pin_expiration", "password_url"]
+    "allowed_operators": [
+      "=",
+      "IN",
+      "LIKE"
+    ],
+    "deny_columns": [
+      "password",
+      "pin",
+      "session_salt",
+      "pin_expiration",
+      "password_url"
+    ]
   }
 }
