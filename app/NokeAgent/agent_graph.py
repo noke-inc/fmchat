@@ -368,12 +368,28 @@ def generate_conversational_response(state: AgentState):
     import sys
     messages = state["messages"]
     
+    synthesis_guideline = (
+        "SYSTEM DIRECTIVE: The operator's requested database query results have executed successfully.\n"
+        "Analyze the provided raw rows dataset array text content found above in the timeline context.\n"
+        "Summarize the findings and answer the manager's initial prompt directly in a friendly, clear, plain conversational sentence.\n"
+        "Do not invoke any tools. Do not mention table aliases or SQL keys. Output raw plain text only."
+    )
+
+     # Prepend the dialogue instruction safely onto this turn track
+    active_synthesis_track = list(messages) + [SystemMessage(content=synthesis_guideline)]
+   
     # ─── FIXED: Bind your tool schema definition directly to this runtime model instance turn ───
-    # This prevents the Bedrock Converse client from throwing a missing toolConfig warning!
+    # This prevents the Bedrock Converse client from throwing a missing toolConfig warning!    
     model_runner_with_tools = _llm().bind_tools([execute_storage_query])
     
     # Invoke your newly bound, context-secured model runner instance safely
-    conversational_reply = model_runner_with_tools.invoke(messages)
+    conversational_reply = model_runner_with_tools.invoke(active_synthesis_track)
+    
+    # ─── ADD THIS PRINT BLOCK RIGHT HERE TO SEE THE LIVE CONVERSATIONAL REPLY TEXT ─── [▲]
+    print("\n" + "🏁" + "─"*32 + " FINAL CONVERSATIONAL AGENT DIALOGUE " + "─"*31, file=sys.stderr)
+    print(f"🤖 BEDROCK AGENT ANSWER:\n{conversational_reply.content}", file=sys.stderr)
+    print("─"*100 + "\n", file=sys.stderr)
+    # ─────────────────────────────────────────────────────────────────────────────────
     
     # ─── EXTRACTION STEP E: DYNAMIC TOKEN TELEMETRY EXTRACTION ───
     usage_info = getattr(conversational_reply, "usage_metadata", {}) or {}
@@ -447,7 +463,7 @@ if __name__ == "__main__":
 
     initial_graph_state = {"messages": [HumanMessage(content=test_user_prompt)],
                            "user_id": None,
-                           "site_id":[2223399],
+                           "site_id":[1001005],
                            "company_id": None}
     print(f"💬 MANAGER INPUT PROMPT: '{test_user_prompt}'")
     print(f"🔒 PRIVILEGES ENFORCED: User {initial_graph_state['user_id']} | Sites {initial_graph_state['site_id']}\n")
