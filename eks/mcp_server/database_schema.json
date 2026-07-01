@@ -227,7 +227,8 @@
       },
       "relationships": {
         "unit": "v2_units.site_id = sites.id",
-        "user": "users_roles.site_id = sites.id"
+        "user": "users_roles.site_id = sites.id",
+        "site_hours": "site_hours_suite.site_id = sites.id"
       }
     },
     "lock": {
@@ -466,7 +467,7 @@
         }
       },
       "relationships": {
-        "site": "site_hours_suite.site_id = sites.id"
+          "site": "site_hours.site_id = sites.id"
       }
     }
   },
@@ -514,12 +515,12 @@
     "unit.site_hours": {
       "via_table": "v2_units",
       "step_1": "v2_units.id = v2_units.id",
-      "step_2": "site_hours_suite.site_id = v2_units.site_id"
+      "step_2": "site_hours.site_id = v2_units.site_id"
     },
     "user.site_hours": {
       "via_table": "users_roles",
       "step_1": "users_roles.user_id = users.id",
-      "step_2": "site_hours_suite.site_id = users_roles.site_id"
+      "step_2": "site_hours.site_id = users_roles.site_id"
     }
   },
   "safety": {
