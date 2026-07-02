@@ -373,21 +373,23 @@ def execute_graph_tools(state: AgentState):
 
 def generate_conversational_response(state: AgentState):
     """Synthesizes raw database JSON row data arrays back into elegant plain sentences."""
-   
+     
     messages = state["messages"]
     
-    # ─── FIXED: TRUNCATE AND COMPRESS CONTEXT WINDOW TIMELINE ───
-    # We inspect the history and isolate the giant tool message text data cells [▲]
-    clean_historical_track = []
+    # Isolate your manager's original text question cleanly from the beginning of the timeline
+    user_initial_prompt = "What is the requested data lookup?"
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            user_initial_prompt = msg.content
+            break
+            
+    # ─── EXTRACTION STEP A: TRUNCATE AND COMPRESS CONTEXT WINDOW TIMELINE ───
+    # We find the raw ToolMessage payload block and parse its row data cells natively
     database_records_text = ""
-    
     for msg in messages:
         if msg.type == "tool":
-            # Isolate the heavy raw rows database payload text string cell [▲]
             try:
                 raw_data = json.loads(msg.content)
-                # Keep only a micro-subset snapshot of the records for the final text summary turn!
-                # This compresses 33,000+ tokens of repetitive rows text cells down to <100 tokens! [▲]
                 if isinstance(raw_data, list) and len(raw_data) > 0:
                     # Pick just the first 3 relevant row items to prove the structural values
                     micro_snapshot = raw_data[:3]
@@ -395,33 +397,51 @@ def generate_conversational_response(state: AgentState):
                 else:
                     database_records_text = str(raw_data)
             except Exception:
-                database_records_text = str(msg.content)[:1000] # Safe fallback clipping guard rail [▲]
-        else:
-            # Keep clean system message instructions or human query entry tokens intact
-            clean_historical_track.append(msg)
-            
-    # Re-inject the ultra-compact, compressed database token results footprint cleanly [▲]
+                database_records_text = str(msg.content)[:1000] # Safe clipping guard
+                
+    # Re-inject the ultra-compact, compressed database token results footprint cleanly
     compressed_rows_context = f"\n[SECURE REPLICA QUERY RESULTS SNAPSHOT]:\n{database_records_text}\n"
     
     synthesis_guideline = (
-        "SYSTEM DIRECTIVE: The operator's requested database query results have executed successfully.\n"
-        "Analyze the provided raw rows dataset array text content found below in the compressed context.\n"
-        "Summarize the findings and answer the manager's initial prompt directly in a friendly conversational sentence.\n"
-        "Do not invoke any tools. Do not mention table aliases or SQL keys. Output raw plain text only.\n\n"
+        "You are a helpful data analyst summarizing information for a site manager.\n"
+        "Your task is to analyze the provided raw replica query results snapshot below and translate it into a friendly conversational sentence.\n"
+        "Answer the manager's initial prompt directly, using plain text only. Do not invoke tools. Do not mention code keys or table aliases.\n\n"
+        f"OPERATOR INITIAL PROMPT: '{user_initial_prompt}'\n"
         f"{compressed_rows_context}"
     )
     
-    # 🚀 SECURED CONTEXT WINDOW TRACK: Ingest prompt footprint size drops to ~800 tokens!
-    clean_synthesis_track = clean_historical_track + [SystemMessage(content=synthesis_guideline)]
+    # 🚀 FIXED PERMANENTLY: ENFORCE A FLAT, CLEAN TWO-MESSAGE SLATE
+    # By eliminating previous incomplete tool_calls messages, Nova can no longer get confused.
+    # It reads a pure text summary instruction, ensuring maximum response reliability!
+    clean_synthesis_track = [
+        SystemMessage(content=synthesis_guideline),
+        HumanMessage(content=f"Please answer my initial question: '{user_initial_prompt}' based on the snapshot values provided.")
+    ]
     
-    # Call a pure _llm() instance with NO tools bound to stop infinite loops natively
+    # Invoke your raw, un-bound client model instance safely with no tool metadata attached
     conversational_reply = _llm().invoke(clean_synthesis_track)
     
-    clean_narrative_sentence = re.sub(r'<result>.*?</result>', '', conversational_reply.content, flags=re.DOTALL)
+    # ─── EXTRACTION STEP B: EXCEPTION-PROOF STRING CONVERSION ───
+    raw_response_content = conversational_reply.content
+    flat_text_extracted = ""
+    
+    if isinstance(raw_response_content, list):
+        for block in raw_response_content:
+            if isinstance(block, dict) and "text" in block:
+                flat_text_extracted += block["text"]
+            elif isinstance(block, str):
+                flat_text_extracted += block
+    else:
+        flat_text_extracted = str(raw_response_content)
+        
+    # Wipe away any trailing internal XML brackets or hidden thinking tags seamlessly
+    clean_narrative_sentence = re.sub(r'<result>.*?</result>', '', flat_text_extracted, flags=re.DOTALL)
+    clean_narrative_sentence = re.sub(r'<thinking>.*?</thinking>', '', clean_narrative_sentence, flags=re.DOTALL)
     clean_narrative_sentence = clean_narrative_sentence.strip()
     
-    # Update the reply object content text field natively so the downstream graph shares the clean string [🔒]
+    # Re-assign the clean plain-text string back onto the LangGraph state message payload block
     conversational_reply.content = clean_narrative_sentence
+    
     # Print the clean narrative text answer directly to your console pane
     print("\n" + "🏁" + "─"*32 + " FINAL CONVERSATIONAL AGENT DIALOGUE " + "─"*31, file=sys.stderr)
     print(f"🤖 BEDROCK AGENT ANSWER:\n{conversational_reply.content}", file=sys.stderr)
@@ -504,7 +524,7 @@ if __name__ == "__main__":
 
     initial_graph_state = {"messages": [HumanMessage(content=test_user_prompt)],
                            "user_id": None,
-                           "site_id":[2223362],
+                           "site_id":None,
                            "company_id": None}
     print(f"💬 MANAGER INPUT PROMPT: '{test_user_prompt}'")
     print(f"🔒 PRIVILEGES ENFORCED: User {initial_graph_state['user_id']} | Sites {initial_graph_state['site_id']}\n")
