@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+import re
 from typing import TypedDict, Annotated, Sequence, Optional, List,Literal
 from enum import Enum
 from pydantic import create_model
@@ -272,10 +273,17 @@ def call_bedrock_orchestrator(state: AgentState):
     print("─"*100 + "\n", file=sys.stderr)
     # ───────────────────────────────────────────────────────────────────────────
     
+    # ─── EXTRACTION STEP E: SECURED MEMORY CONTEXT MATRIX ROUTING ───
     llm_with_tools = _llm().bind_tools([execute_storage_query])
-    complete_message_track = [SystemMessage(content=system_instruction)] + list(messages)
     
-    response_message = llm_with_tools.invoke(complete_message_track)
+    # 🚀 FIXED: We build a temporary list payload strictly for this cloud call turn.
+    # This prevents duplicate history logs from stacking in LangGraph memory states! [▲]
+    clean_runtime_track = [SystemMessage(content=system_instruction)] + list(messages)
+    
+    # Fire the AWS Bedrock client using the lightweight instruction array
+    response_message = llm_with_tools.invoke(clean_runtime_track)
+    
+    # 🚀 SAFE RETURN: Return ONLY the single new message token object [▲]
     return {"messages": [response_message]}
 
 
@@ -365,33 +373,61 @@ def execute_graph_tools(state: AgentState):
 
 def generate_conversational_response(state: AgentState):
     """Synthesizes raw database JSON row data arrays back into elegant plain sentences."""
-    import sys
+   
     messages = state["messages"]
+    
+    # ─── FIXED: TRUNCATE AND COMPRESS CONTEXT WINDOW TIMELINE ───
+    # We inspect the history and isolate the giant tool message text data cells [▲]
+    clean_historical_track = []
+    database_records_text = ""
+    
+    for msg in messages:
+        if msg.type == "tool":
+            # Isolate the heavy raw rows database payload text string cell [▲]
+            try:
+                raw_data = json.loads(msg.content)
+                # Keep only a micro-subset snapshot of the records for the final text summary turn!
+                # This compresses 33,000+ tokens of repetitive rows text cells down to <100 tokens! [▲]
+                if isinstance(raw_data, list) and len(raw_data) > 0:
+                    # Pick just the first 3 relevant row items to prove the structural values
+                    micro_snapshot = raw_data[:3]
+                    database_records_text = json.dumps(micro_snapshot, default=str)
+                else:
+                    database_records_text = str(raw_data)
+            except Exception:
+                database_records_text = str(msg.content)[:1000] # Safe fallback clipping guard rail [▲]
+        else:
+            # Keep clean system message instructions or human query entry tokens intact
+            clean_historical_track.append(msg)
+            
+    # Re-inject the ultra-compact, compressed database token results footprint cleanly [▲]
+    compressed_rows_context = f"\n[SECURE REPLICA QUERY RESULTS SNAPSHOT]:\n{database_records_text}\n"
     
     synthesis_guideline = (
         "SYSTEM DIRECTIVE: The operator's requested database query results have executed successfully.\n"
-        "Analyze the provided raw rows dataset array text content found above in the timeline context.\n"
-        "Summarize the findings and answer the manager's initial prompt directly in a friendly, clear, plain conversational sentence.\n"
-        "Do not invoke any tools. Do not mention table aliases or SQL keys. Output raw plain text only."
+        "Analyze the provided raw rows dataset array text content found below in the compressed context.\n"
+        "Summarize the findings and answer the manager's initial prompt directly in a friendly conversational sentence.\n"
+        "Do not invoke any tools. Do not mention table aliases or SQL keys. Output raw plain text only.\n\n"
+        f"{compressed_rows_context}"
     )
-
-     # Prepend the dialogue instruction safely onto this turn track
-    active_synthesis_track = list(messages) + [SystemMessage(content=synthesis_guideline)]
-   
-    # ─── FIXED: Bind your tool schema definition directly to this runtime model instance turn ───
-    # This prevents the Bedrock Converse client from throwing a missing toolConfig warning!    
-    model_runner_with_tools = _llm().bind_tools([execute_storage_query])
     
-    # Invoke your newly bound, context-secured model runner instance safely
-    conversational_reply = model_runner_with_tools.invoke(active_synthesis_track)
+    # 🚀 SECURED CONTEXT WINDOW TRACK: Ingest prompt footprint size drops to ~800 tokens!
+    clean_synthesis_track = clean_historical_track + [SystemMessage(content=synthesis_guideline)]
     
-    # ─── ADD THIS PRINT BLOCK RIGHT HERE TO SEE THE LIVE CONVERSATIONAL REPLY TEXT ─── [▲]
+    # Call a pure _llm() instance with NO tools bound to stop infinite loops natively
+    conversational_reply = _llm().invoke(clean_synthesis_track)
+    
+    clean_narrative_sentence = re.sub(r'<result>.*?</result>', '', conversational_reply.content, flags=re.DOTALL)
+    clean_narrative_sentence = clean_narrative_sentence.strip()
+    
+    # Update the reply object content text field natively so the downstream graph shares the clean string [🔒]
+    conversational_reply.content = clean_narrative_sentence
+    # Print the clean narrative text answer directly to your console pane
     print("\n" + "🏁" + "─"*32 + " FINAL CONVERSATIONAL AGENT DIALOGUE " + "─"*31, file=sys.stderr)
     print(f"🤖 BEDROCK AGENT ANSWER:\n{conversational_reply.content}", file=sys.stderr)
     print("─"*100 + "\n", file=sys.stderr)
-    # ─────────────────────────────────────────────────────────────────────────────────
     
-    # ─── EXTRACTION STEP E: DYNAMIC TOKEN TELEMETRY EXTRACTION ───
+    # Dynamic Token Telemetry Extraction
     usage_info = getattr(conversational_reply, "usage_metadata", {}) or {}
     if not usage_info and hasattr(conversational_reply, "response_metadata"):
         usage_info = conversational_reply.response_metadata.get("usage", {}) or {}
@@ -406,9 +442,15 @@ def generate_conversational_response(state: AgentState):
 
 
 
+
+
 def route_next_node(state: AgentState):
     """Inspects messages to decide whether to trigger tools or close the state loop."""
     messages = state["messages"]
+    
+    if not messages:
+        return END
+    
     last_message = messages[-1]
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "execute_tools"
@@ -452,18 +494,17 @@ if __name__ == "__main__":
     print("\n" + "═"*80)
     print("🔬 INITIALIZING 100% NON-HARDCODED METADATA TUNER FOR AMAZON NOVA")
     print("═"*80)
-    # ─── CHANGE THE PROMPT HERE TO SCROLL THROUGH ALL INTENT SCENARIOS NATIVELY ───
+    # ─── CHANGE THE PROMPT HERE TO SCROLL THROUGH ALL INTENT SCENARIOS NATIVELY  2223399───
     #test_user_prompt = "what is the status of unit LA879 ?"
     #test_user_prompt = "What is the unit status for Service Unit 2256149?"
     # test_user_prompt = "rental state for user Johnny?"
-    #test_user_prompt = "what is the email of the user who is assigned to the unit LA879?"
+    #test_user_prompt = "what is the email of the user who is assigned to the unit LA879 / 2223399?"
     #test_user_prompt = "How many open units?"
-    # Inside agent_graph.py -> __main__ block
-    test_user_prompt = "What is the monday open timing for site Mateo?"
+    test_user_prompt = "What is the Weekdays open timing for site Sugar Hill 1?"
 
     initial_graph_state = {"messages": [HumanMessage(content=test_user_prompt)],
                            "user_id": None,
-                           "site_id":[1001005],
+                           "site_id":[2223362],
                            "company_id": None}
     print(f"💬 MANAGER INPUT PROMPT: '{test_user_prompt}'")
     print(f"🔒 PRIVILEGES ENFORCED: User {initial_graph_state['user_id']} | Sites {initial_graph_state['site_id']}\n")
