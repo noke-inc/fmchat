@@ -17,7 +17,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 # Core LangChain and State Graph framework modules
 from langchain_aws import ChatBedrock
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage,AIMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import add_messages
@@ -87,7 +87,23 @@ def call_bedrock_orchestrator(state: AgentState):
     import re
     
     messages = state["messages"]
-    last_human_prompt = messages[-1].content.lower().strip()
+     # ─── FIXED: SAFE STRING EXTRACTION FOR LANGGRAPH STUDIO BLOCKS ───
+    raw_content = messages[-1].content
+    flat_prompt_string = ""
+    
+    if isinstance(raw_content, list):
+        for block in raw_content:
+            if isinstance(block, dict) and "text" in block:
+                flat_prompt_string += block["text"]
+            elif isinstance(block, str):
+                flat_prompt_string += block
+    else:
+        flat_prompt_string = str(raw_content)
+        
+    last_human_prompt = flat_prompt_string.lower().strip()
+    # ─────────────────────────────────────────────────────────────────
+    
+    clean_prompt_normalized = re.sub(r'[^\w\s]', ' ', last_human_prompt)
     
     # Clean out trailing punctuation symbols smoothly (e.g. converting "site?" natively to "site") [🔒]
     clean_prompt_normalized = re.sub(r'[^\w\s]', ' ', last_human_prompt)
@@ -174,6 +190,28 @@ def call_bedrock_orchestrator(state: AgentState):
 
 
     # ─── EXTRACTION STEP B: DYNAMIC FACT TABLE SELECTION ───
+    # agent_graph.py (Insert this right below Extraction Step B inside call_bedrock_orchestrator)
+    
+    # =============================================================================
+    # ─── FIXED PERMANENTLY: OUT-OF-SCOPE DOMAIN PROTECTION GUARD RAIL ───
+    # =============================================================================
+    # If a prompt completely fails to activate any database tables or synonyms,
+    # we block it instantly, stopping AI hallucinations and saving 100% of cloud costs!
+    if not discovered_entities:
+        print("\n" + "🛑" + "─"*32 + " OUT-OF-SCOPE ENFORCEMENT DETECTED " + "─"*31, file=sys.stderr)
+        print("Prompt maps to zero database entities. Terminating query loop safely.", file=sys.stderr)
+        print("─"*100 + "\n", file=sys.stderr)
+        
+        refusal_response = (
+            "I'm sorry, that information is not available."
+        )
+        
+        # Construct a clean, direct narrative response message to close the graph turn instantly
+        refusal_msg = AIMessage(content=refusal_response)
+        return {"messages": [refusal_msg]}
+    # ─────────────────────────────────────────────────────────────────────────────
+
+
     fact_table_entity = discovered_entities if discovered_entities else "unresolved"
     max_relationship_density = -1
     for candidate in discovered_entities:
@@ -520,7 +558,9 @@ if __name__ == "__main__":
     # test_user_prompt = "rental state for user Johnny?"
     #test_user_prompt = "what is the email of the user who is assigned to the unit LA879 / 2223399?"
     #test_user_prompt = "How many open units?"
-    test_user_prompt = "What is the Weekdays open timing for site Sugar Hill 1?"
+    #test_user_prompt = "What is the Weekdays open timing for site Sugar Hill 1?"
+    #test_user_prompt = "write me sample hello world java code?"
+    test_user_prompt = "what is your name?"
 
     initial_graph_state = {"messages": [HumanMessage(content=test_user_prompt)],
                            "user_id": None,
