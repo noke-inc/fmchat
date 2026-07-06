@@ -46,10 +46,7 @@
         },
         "details_price": {
           "type": "float"
-        },
-        "company_id": {
-          "type": "int"
-        },
+        },        
         "site_id": {
           "type": "int"
         }
@@ -250,9 +247,6 @@
         },
         "ble_hw_version": {
           "type": "varchar"
-        },
-        "company_id": {
-          "type": "int"
         }
       },
       "relationships": {
