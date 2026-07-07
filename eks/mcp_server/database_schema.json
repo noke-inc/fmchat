@@ -88,7 +88,7 @@
           ],
           "allowed_values": [
             "available",
-            "in use",
+            "inuse",
             "repo"
           ],
           "enum_map": {
@@ -99,7 +99,7 @@
               "empty",
               "vacant"
             ],
-            "in use": [
+            "inuse": [
               "inuse",
               "overlock",
               "testing",

@@ -636,6 +636,68 @@ def compile_site_selection_menu(state: AgentState):
     }
 
 
+def missing_company_scope_response(state: AgentState):
+    """Visible stop response when no company scope is available in session state."""
+    import sys
+    message_text = "I cannot process this request because no company scope is available in this session."
+    print("\n🛑" + "─"*30 + " MISSING COMPANY SCOPE " + "─"*30, file=sys.stderr)
+    print(message_text, file=sys.stderr)
+    print("─"*100 + "\n", file=sys.stderr)
+    return {
+        "messages": [AIMessage(content=message_text)],
+        "pending_user_query": None,
+        "awaiting_site_selection": False
+    }
+
+
+def missing_site_scope_response(state: AgentState):
+    """Visible stop response when no site scope is available in session state."""
+    import sys
+    message_text = "I cannot process this request because no site scope is available in this session."
+    print("\n🛑" + "─"*31 + " MISSING SITE SCOPE " + "─"*31, file=sys.stderr)
+    print(message_text, file=sys.stderr)
+    print("─"*100 + "\n", file=sys.stderr)
+    return {
+        "messages": [AIMessage(content=message_text)],
+        "pending_user_query": None,
+        "awaiting_site_selection": False
+    }
+
+
+def recover_no_tool_after_orchestrator(state: AgentState):
+    """Deterministic recovery path if the orchestrator returns text with no tool call."""
+    import sys
+
+    jwt_site_fence = state.get("site_id", []) or []
+    active_site_cache = state.get("active_session_site", []) or []
+    pending_user_query = state.get("pending_user_query")
+    awaiting_site_selection = bool(state.get("awaiting_site_selection", False))
+
+    print("\n🧯" + "─"*24 + " ORCHESTRATOR NO-TOOL RECOVERY " + "─"*24, file=sys.stderr)
+    print(f"pending_user_query: {pending_user_query}", file=sys.stderr)
+    print(f"awaiting_site_selection: {awaiting_site_selection}", file=sys.stderr)
+    print(f"active_session_site: {active_site_cache}", file=sys.stderr)
+    print("─"*100 + "\n", file=sys.stderr)
+
+    # If selection is still unresolved (or active context was cleared), redisplay the site menu.
+    if len(jwt_site_fence) > 1 and not active_site_cache:
+        return compile_site_selection_menu(state)
+
+    # Otherwise return a deterministic retry response without stale synthesis.
+    fallback_text = (
+        "I could not extract a valid database tool call for this turn. "
+        "Please re-enter your request, and I will run the query again."
+    )
+    print(fallback_text, file=sys.stderr)
+    print("─"*100 + "\n", file=sys.stderr)
+
+    return {
+        "messages": [AIMessage(content=fallback_text)],
+        "pending_user_query": pending_user_query,
+        "awaiting_site_selection": awaiting_site_selection
+    }
+
+
 
 def generate_conversational_response(state: AgentState):
     """Synthesizes raw database JSON row data arrays back into elegant plain sentences."""
@@ -801,10 +863,10 @@ def route_next_node(state: AgentState):
 
     # Step 1: Hard stop guards for missing authorization context
     if not jwt_company_fence:
-        return END
+        return "missing_company_scope"
 
     if not jwt_site_fence:
-        return END
+        return "missing_site_scope"
 
     # Step 2: Tool Calling Trigger
     has_active_tool_call = False
@@ -820,6 +882,12 @@ def route_next_node(state: AgentState):
 
     if has_active_tool_call:
         return "execute_tools"
+
+    # Step 2.5: Orchestrator returned no tool call while a pending query exists.
+    if last_message.type == "ai" and pending_user_query and not has_active_tool_call:
+        flat_text = str(last_message.content)
+        if "MULTIPLE FACILITY SITES" not in flat_text and "MULTIPLE CORPORATE ACCOUNTS" not in flat_text:
+            return "recover_no_tool_after_orchestrator"
         
     # Step 3: If multiple sites and no active selection, show selection menu.
     if len(jwt_site_fence) > 1 and not active_site_cache and not awaiting_site_selection:
@@ -872,6 +940,9 @@ workflow.add_node("execute_tools", execute_graph_tools)
 workflow.add_node("trigger_company_selection", compile_company_selection_menu)
 workflow.add_node("trigger_site_selection", compile_site_selection_menu)
 workflow.add_node("conversational_synthesis", generate_conversational_response)
+workflow.add_node("missing_company_scope", missing_company_scope_response)
+workflow.add_node("missing_site_scope", missing_site_scope_response)
+workflow.add_node("recover_no_tool_after_orchestrator", recover_no_tool_after_orchestrator)
 
 # ─── FIXED PERMANENTLY: SYNCHRONIZED START GATE CONDITIONAL DICTIONARY MAP ───
 # Added execute_tools to allow the graph to process user menu selection inputs instantly! [🔒]
@@ -883,6 +954,9 @@ workflow.add_conditional_edges(
         "trigger_site_selection": "trigger_site_selection",
         "bedrock_orchestrator": "bedrock_orchestrator",
         "conversational_synthesis": "conversational_synthesis",
+        "missing_company_scope": "missing_company_scope",
+        "missing_site_scope": "missing_site_scope",
+        "recover_no_tool_after_orchestrator": "recover_no_tool_after_orchestrator",
         # 🚀 THE CRITICAL MISSING LINK CHANNEL:
         "execute_tools": "execute_tools",
         END: END
@@ -895,7 +969,10 @@ workflow.add_conditional_edges(
     route_next_node,
     {
         "execute_tools": "execute_tools",
+        "recover_no_tool_after_orchestrator": "recover_no_tool_after_orchestrator",
         "conversational_synthesis": "conversational_synthesis",
+        "missing_company_scope": "missing_company_scope",
+        "missing_site_scope": "missing_site_scope",
         END: END
     }
 )
@@ -908,7 +985,10 @@ workflow.add_conditional_edges(
         "trigger_site_selection": "trigger_site_selection",
         "trigger_company_selection": "trigger_company_selection",
         "bedrock_orchestrator": "bedrock_orchestrator",
+        "recover_no_tool_after_orchestrator": "recover_no_tool_after_orchestrator",
         "conversational_synthesis": "conversational_synthesis",
+        "missing_company_scope": "missing_company_scope",
+        "missing_site_scope": "missing_site_scope",
         "execute_tools": "execute_tools",
         END: END
     }
@@ -918,6 +998,9 @@ workflow.add_conditional_edges(
 workflow.add_edge("trigger_company_selection", END)
 workflow.add_edge("trigger_site_selection", END)
 workflow.add_edge("conversational_synthesis", END)
+workflow.add_edge("missing_company_scope", END)
+workflow.add_edge("missing_site_scope", END)
+workflow.add_edge("recover_no_tool_after_orchestrator", END)
 
 # Compile into an executable ready-to-run state machine application object
 agent_brain_app = workflow.compile()
@@ -935,7 +1018,7 @@ if __name__ == "__main__":
     print("═"*80)
     print("📋 SIMULATING SECURED INGEST ENVELOPE PRIVILEGES...")
     
-    mock_jwt_company_fence = [1000245]
+    mock_jwt_company_fence = [1000245] #
     mock_jwt_site_fence = [2223399, 2223449]
     
     print(f"   - Company Privilege Fence Scope : {mock_jwt_company_fence}")
@@ -996,6 +1079,8 @@ if __name__ == "__main__":
             if user_raw_input.lower() in ["no company", "simulate no company"]:
                 session_rolling_state["company_id"] = []
                 session_rolling_state["active_session_company"] = []
+                session_rolling_state["pending_user_query"] = None
+                session_rolling_state["awaiting_site_selection"] = False
                 print("\n🧪 Local test mode: company scope cleared for this session.")
                 continue
 
@@ -1007,12 +1092,24 @@ if __name__ == "__main__":
             if user_raw_input.lower() in ["no site", "simulate no site"]:
                 session_rolling_state["site_id"] = []
                 session_rolling_state["active_session_site"] = []
+                session_rolling_state["pending_user_query"] = None
+                session_rolling_state["awaiting_site_selection"] = False
                 print("\n🧪 Local test mode: site scope cleared for this session.")
                 continue
 
             if user_raw_input.lower() in ["restore site", "simulate site"]:
                 session_rolling_state["site_id"] = list(mock_jwt_site_fence)
+                session_rolling_state["active_session_site"] = []
+                session_rolling_state["pending_user_query"] = None
+                session_rolling_state["awaiting_site_selection"] = False
                 print("\n🧪 Local test mode: site scope restored.")
+                continue
+
+            if user_raw_input.lower() in ["clear active site", "simulate clear active site"]:
+                session_rolling_state["active_session_site"] = []
+                session_rolling_state["awaiting_site_selection"] = False
+                session_rolling_state["pending_user_query"] = None
+                print("\n🧪 Local test mode: active site selection cache cleared.")
                 continue
 
             # ─── 🚀 FIXED PERMANENTLY: CONTEXT APPEND TRACKING ─── [🔒]

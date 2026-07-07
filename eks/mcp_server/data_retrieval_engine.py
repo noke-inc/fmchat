@@ -1,4 +1,5 @@
 # mcp_server.py
+from itertools import count
 import json
 import os
 import re
@@ -166,9 +167,13 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
     # ─── 4. DYNAMIC SELECT COMPILATION ───
     # =============================================================================
     allowed_cols_dict = entity_meta.get("allowed_columns", {})
-    if intent_type == "DATA_AGGREGATION" and semantic_filters:
-        allowed_formulas = entity_meta.get("allowed_aggregations", {})
-        for op in [f.lower() for f in semantic_filters]:
+    normalized_filters = [f.lower().strip() for f in (semantic_filters or []) if str(f).strip()]
+    allowed_formulas = entity_meta.get("allowed_aggregations", {})
+    aggregation_filters = [f for f in normalized_filters if f in allowed_formulas]
+    predicate_filters = [f for f in normalized_filters if f not in allowed_formulas]
+
+    if intent_type == "DATA_AGGREGATION" and normalized_filters:
+        for op in aggregation_filters:
             formula_meta = allowed_formulas.get(op)
             if not formula_meta:
                 continue
@@ -233,6 +238,62 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         where_clauses.append(" AND ".join(security_group_filters))
     else:
         where_clauses.append("1=1")
+
+    # ================================================================
+    # ─── 5.1 SCHEMA-DRIVEN SEMANTIC PREDICATE FILTER COMPILATION ───
+    # ================================================================
+    if predicate_filters:
+        # Resolve semantic tokens (e.g. open, inuse, active) against enum_map values.
+        # Prefer matching on the root entity first, then outward traversal entities.
+        predicate_search_order = [root_entity] + [n for n in traversal_sequence if n != root_entity]
+        resolved_predicates = {}
+        unresolved_tokens = []
+
+        for token in predicate_filters:
+            token_matched = False
+            for entity_name in predicate_search_order:
+                assigned_alias = alias_map.get(entity_name)
+                if not assigned_alias:
+                    continue
+
+                entity_cfg = SCHEMA_CATALOG["entities"].get(entity_name, {})
+                column_meta = entity_cfg.get("column_metadata", {})
+                for col_name, col_meta in column_meta.items():
+                    enum_map = col_meta.get("enum_map", {}) or {}
+                    if not enum_map:
+                        continue
+
+                    for canonical_value, synonyms in enum_map.items():
+                        terms = {str(canonical_value).lower().strip()}
+                        terms.update(str(s).lower().strip() for s in (synonyms or []))
+                        if token in terms:
+                            key = (assigned_alias, col_name)
+                            resolved_predicates.setdefault(key, set()).add(str(canonical_value))
+                            token_matched = True
+                            break
+                    if token_matched:
+                        break
+                if token_matched:
+                    break
+
+            if not token_matched:
+                unresolved_tokens.append(token)
+
+        for idx, ((pred_alias, pred_col), canonical_values) in enumerate(resolved_predicates.items()):
+            pred_param = f"sem_{idx}"
+            canonical_list = sorted(canonical_values)
+            if len(canonical_list) == 1:
+                where_clauses.append(f"{pred_alias}.{pred_col} = %({pred_param})s")
+                query_params[pred_param] = canonical_list[0]
+            else:
+                where_clauses.append(f"{pred_alias}.{pred_col} IN %({pred_param})s")
+                query_params[pred_param] = tuple(canonical_list)
+
+        print("\n================ SEMANTIC PREDICATE MAPPING =================", file=sys.stderr)
+        print(f"Input predicate filters : {predicate_filters}", file=sys.stderr)
+        print(f"Resolved predicates     : {resolved_predicates}", file=sys.stderr)
+        print(f"Unresolved predicates   : {unresolved_tokens}", file=sys.stderr)
+        print("==============================================================\n", file=sys.stderr)
     # ================================# 
     # ─── 6. STRICT TYPE-DRIVEN TEXT SEARCH BUILDER ───#
     #  =====================================
@@ -277,9 +338,9 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         global LAST_COMPILED_SQL
         LAST_COMPILED_SQL = final_sql % formatted_params
          # ─── FIXED PERMANENTLY: FORCE THE EXPLICIT INTERPOLATED PRINT OUTPUT LINE NATIVELY ───
-        # print("\n================ STEP 3: INTERPOLATED QUERY WITH LIVE VALUES ================ ", file=sys.stderr)
-        # print(LAST_COMPILED_SQL, file=sys.stderr)
-        # print("=============================================================================\n", file=sys.stderr)
+        print("\n================ STEP 3: INTERPOLATED QUERY WITH LIVE VALUES ================ ", file=sys.stderr)
+        print(LAST_COMPILED_SQL, file=sys.stderr)
+        print("=============================================================================\n", file=sys.stderr)
         
     except Exception as parse_err:
         pass
@@ -297,10 +358,10 @@ if __name__ == "__main__":
     load_database_schema_config("database_schema.json")
     
     # Your exact diagnostic scenario test parameters [🔒]
-    mock_subjects = ["unit", "site", "site_hours"]
-    mock_filters = None
-    mock_intent = "DATA_RETRIEVAL"
-    test_search_keyword = "Mateo"
+    mock_subjects = ["unit","site"]
+    mock_filters = ["open"]
+    mock_intent = "DATA_AGGREGATION"
+    test_search_keyword = None
     random_session_context = {
         "company_id": None,
         "site_id": [1001005],
@@ -319,7 +380,7 @@ if __name__ == "__main__":
             intent_type=mock_intent,
             session_context=random_session_context,
             semantic_filters=mock_filters,
-            aggregation_column="details_price",
+            aggregation_column="*",
             search_keyword=test_search_keyword,
         )
         print("🎉 LIVE LOCAL HARNESS EXECUTION COMPLETED WITH 100% SUCCESS!")
