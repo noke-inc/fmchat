@@ -212,7 +212,28 @@ def call_bedrock_orchestrator(state: AgentState):
             
     vocabulary_text_block = "\n".join(pruned_columns_vocabulary)
     expected_sequence_token = ", ".join(discovered_entities)
-    
+
+    # ── Schema-derived semantic token vocabulary (zero hardcoding) ────────────
+    # Aggregation ops come first (from allowed_aggregations), then every
+    # enum_map synonym across all column_metadata blocks for the discovered
+    # entities.  Adding a new entity or new enum_map entries to
+    # database_schema.json automatically expands this list — no code changes.
+    _all_semantic_tokens: list = []
+    for _ent in discovered_entities:
+        _ent_def = active_catalog["entities"].get(_ent, {})
+        for _agg_key in (_ent_def.get("allowed_aggregations") or {}):
+            if _agg_key not in _all_semantic_tokens:
+                _all_semantic_tokens.append(_agg_key)
+    for _ent in discovered_entities:
+        _ent_def = active_catalog["entities"].get(_ent, {})
+        for _col_name, _col_block in _ent_def.get("column_metadata", {}).items():
+            for _canonical, _synonyms in (_col_block.get("enum_map") or {}).items():
+                for _syn in _synonyms:
+                    _syn_lc = str(_syn).lower().strip()
+                    if _syn_lc not in _all_semantic_tokens:
+                        _all_semantic_tokens.append(_syn_lc)
+    semantic_tokens_hint = ", ".join("'" + t + "'" for t in _all_semantic_tokens)
+
     print("\n🔍" + "─"*30 + " 100% DATA-DRIVEN PRE-IDENTIFICATION SWEEP " + "─"*30, file=sys.stderr)
     print(f"📁 Dynamically Discovered Intents (Entities): {discovered_entities}", file=sys.stderr)
     print(f"📊 Mathematically Derived Fact Table Anchor: '{fact_table_entity}'", file=sys.stderr)
@@ -239,12 +260,20 @@ def call_bedrock_orchestrator(state: AgentState):
                     "description": f"The active table targets required for this query. You MUST choose exactly the string value: '{expected_sequence_token}'."
                 },
                 "semantic_filters": {
-                    "type": "string",
-                    "description": "Comma-separated string listing modifier status terms or math actions (e.g. 'count, active')."
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "ALL modifier tokens present in the user query as separate list elements. "
+                        f"Schema-derived valid tokens for this request: [{semantic_tokens_hint}]. "
+                        "Include EVERY token from the user query that matches the list above. "
+                        "EXAMPLE: 'how many open units?' -> ['count', 'open']. "
+                        "EXAMPLE: 'count active locks' -> ['count', 'active']. "
+                        "NEVER omit a status qualifier word."
+                    )
                 },
                 "search_keyword": {
                     "type": "string",
-                    "description": "Wildcard search text matching specific names, descriptions, or tracking labels. CRITICAL PARALLEL EXECUTION GUARD: You are strictly forbidden from calling this tool multiple times. If the operator mentions multiple entities or locations, you MUST combine them into a single comma-separated string."
+                    "description": "Wildcard search value for specific entity identifiers, human-readable names, or reference labels ONLY (e.g. 'LA879', 'John Smith'). NEVER put numeric site IDs, company IDs, or session context values here — those are already handled by the session security layer."
                 },
                 "aggregation_column": {
                     "type": "string",
@@ -270,10 +299,16 @@ def call_bedrock_orchestrator(state: AgentState):
         "CRITICAL EXTRACTION CONSTRAINTS:\n"
         f"1. Inside the 'target_subjects' string field, you MUST pass a comma-separated list choosing exclusively from this precise list: {discovered_entities}\n"
         " - Never invent concepts. If the question asks about users and site, write exactly: 'site, user'\n"
-        "2. Inside the 'semantic_filters' string field, pass your operational modifiers as a comma-separated string (e.g. 'count, active').\n"
-        "3. Route specific proper human names, emails, unique labels, or identifier codes exclusively to 'search_keyword'.\n"
-        "4. Do not invent non-existent column fields. Do not hypothesize parameters outside the provided context block.\n"
-        "5. You MUST call the tool 'execute_storage_query' exactly once for this request."
+        f"2. Inside the 'semantic_filters' array, include EVERY modifier token from the user query as a separate element.\n"
+        f"   Schema-derived valid tokens for this request: [{semantic_tokens_hint}]\n"
+        "   Add every token the user said that matches the list above.\n"
+        "   EXAMPLE: 'how many open units?' -> semantic_filters: ['count', 'open']\n"
+        "   EXAMPLE: 'count active locks' -> semantic_filters: ['count', 'active']\n"
+        "   NEVER omit a status qualifier word from the array.\n"
+        "3. Route specific entity reference codes, human names, unit labels, or email values exclusively to 'search_keyword'. Example: unit name 'LA879' belongs in search_keyword.\n"
+        "4. NEVER put numeric site IDs, company IDs, or any session identifier into 'search_keyword'. Site and company scope is managed by the session layer automatically.\n"
+        "5. Do not invent non-existent column fields. Do not hypothesize parameters outside the provided context block.\n"
+        "6. You MUST call the tool 'execute_storage_query' exactly once for this request."
     )
     
     print("\n📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
@@ -285,10 +320,26 @@ def call_bedrock_orchestrator(state: AgentState):
     # =============================================================================
     # Bind using the ultra-stable native dictionary envelope schema contract [🔒]
     llm_with_tools = _llm().bind_tools([native_tool_schema])
-    # Re-build non-duplicating list array payload strictly for this model turn
-    clean_runtime_track = [SystemMessage(content=system_instruction)] + list(messages)
-    if orchestrator_user_payload != messages[-1].content and isinstance(messages[-1], HumanMessage):
-        clean_runtime_track = [SystemMessage(content=system_instruction)] + list(messages[:-1]) + [HumanMessage(content=str(orchestrator_user_payload))]
+    # Strip historical menu/selection turns so model cannot pick up site IDs from prior context.
+    # Keep only: the effective user query. Prior tool/AI/selection messages are excluded.
+    from langchain_core.messages import ToolMessage as _ToolMessage
+    _menu_markers = ("MULTIPLE FACILITY SITES", "MULTIPLE CORPORATE ACCOUNTS")
+    filtered_history = [
+        msg for msg in messages
+        if not (
+            isinstance(msg, (AIMessage, _ToolMessage))
+            or (
+                isinstance(msg, HumanMessage)
+                and re.match(r'^\s*\d+\s*$', str(msg.content).strip())
+            )
+            or (
+                isinstance(msg, AIMessage)
+                and any(marker in str(msg.content) for marker in _menu_markers)
+            )
+        )
+    ]
+    effective_human = HumanMessage(content=str(orchestrator_user_payload))
+    clean_runtime_track = [SystemMessage(content=system_instruction), effective_human]
     response_message = llm_with_tools.invoke(clean_runtime_track)
 
     print("\n🧠" + "─"*30 + " AMAZON NOVA ORCHESTRATOR RAW OUTPUT " + "─"*30, file=sys.stderr)
@@ -473,8 +524,47 @@ def execute_graph_tools(state: AgentState):
             print("─"*100 + "\n", file=sys.stderr)
             
             parsed_subjects = [s.strip() for s in tc_args.get("target_subjects", "").split(",") if s.strip()]
-            parsed_filters = [f.strip() for f in tc_args.get("semantic_filters", "").split(",") if f.strip()] if tc_args.get("semantic_filters") else []
-            
+
+            # Normalize semantic_filters to list regardless of whether model emits array or comma string.
+            raw_filters = tc_args.get("semantic_filters") or []
+            if isinstance(raw_filters, list):
+                parsed_filters = [str(f).strip() for f in raw_filters if str(f).strip()]
+            else:
+                parsed_filters = [f.strip() for f in str(raw_filters).split(",") if f.strip()]
+
+            # ── Deterministic enum-synonym injection fallback ─────────────────────
+            # If the model omitted a status qualifier that clearly appears in the
+            # user query, inject it here by scanning SCHEMA_CATALOG enum_map synonyms
+            # for every target entity. Fully schema-driven — new entities/enum_map
+            # entries in database_schema.json are covered automatically.
+            _uq_text = str(pending_user_query).lower() if pending_user_query else ""
+            if not _uq_text:
+                for _uq_msg in reversed(messages):
+                    if isinstance(_uq_msg, HumanMessage):
+                        _uq_text = str(_uq_msg.content).lower()
+                        break
+            _uq_clean = re.sub(r'[^\w\s]', ' ', _uq_text)
+            _se = data_retrieval_engine.SCHEMA_CATALOG.get("entities", {})
+            for _subj in parsed_subjects:
+                for _col_nm, _col_blk in _se.get(_subj, {}).get("column_metadata", {}).items():
+                    for _cano, _syns in (_col_blk.get("enum_map") or {}).items():
+                        for _syn in _syns:
+                            _syn_lc = str(_syn).lower().strip()
+                            if re.search(r'\b' + re.escape(_syn_lc) + r'\b', _uq_clean) and _syn_lc not in parsed_filters:
+                                print(f"🔧 Injecting missing semantic token '{_syn_lc}' (col:{_col_nm} -> canonical:'{_cano}')", file=sys.stderr)
+                                parsed_filters.append(_syn_lc)
+
+            # Sanitize search_keyword: drop it if it matches any session scope ID.
+            raw_search = tc_args.get("search_keyword") or ""
+            session_scope_ids = set()
+            for _ids in [jwt_company_fence, jwt_site_fence, active_company_cache, active_site_cache]:
+                for _id in (_ids or []):
+                    session_scope_ids.add(str(_id).strip())
+            if raw_search.strip() in session_scope_ids:
+                print(f"⚠️  search_keyword '{raw_search}' matches a session scope ID — dropping it to prevent SQL contamination.", file=sys.stderr)
+                raw_search = None
+            clean_search = raw_search if raw_search and raw_search.strip() else None
+
             try:
                 db_rows_matrix = data_retrieval_engine.run_compiled_mcp_query(
                     subjects=parsed_subjects,
@@ -482,7 +572,7 @@ def execute_graph_tools(state: AgentState):
                     session_context=computed_context,
                     semantic_filters=parsed_filters,
                     aggregation_column=tc_args.get("aggregation_column"),
-                    search_keyword=tc_args.get("search_keyword")
+                    search_keyword=clean_search
                 )
                 
                 print("\n" + "📝" + "─"*32 + " DYNAMICALLY GENERATED SQL COMMAND " + "─"*31, file=sys.stderr)
@@ -667,14 +757,28 @@ def missing_site_scope_response(state: AgentState):
 def recover_no_tool_after_orchestrator(state: AgentState):
     """Deterministic recovery path if the orchestrator returns text with no tool call."""
     import sys
+    import json
+    import re
 
+    jwt_company_fence = state.get("company_id", []) or []
+    active_company_cache = state.get("active_session_company", []) or []
     jwt_site_fence = state.get("site_id", []) or []
     active_site_cache = state.get("active_session_site", []) or []
     pending_user_query = state.get("pending_user_query")
     awaiting_site_selection = bool(state.get("awaiting_site_selection", False))
+    messages = state.get("messages", []) or []
+
+    latest_human_text = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            latest_human_text = str(msg.content)
+            break
+    effective_query = str(pending_user_query or latest_human_text or "").strip()
+    normalized_query = effective_query.lower()
 
     print("\n🧯" + "─"*24 + " ORCHESTRATOR NO-TOOL RECOVERY " + "─"*24, file=sys.stderr)
     print(f"pending_user_query: {pending_user_query}", file=sys.stderr)
+    print(f"effective_query: {effective_query}", file=sys.stderr)
     print(f"awaiting_site_selection: {awaiting_site_selection}", file=sys.stderr)
     print(f"active_session_site: {active_site_cache}", file=sys.stderr)
     print("─"*100 + "\n", file=sys.stderr)
@@ -682,6 +786,109 @@ def recover_no_tool_after_orchestrator(state: AgentState):
     # If selection is still unresolved (or active context was cleared), redisplay the site menu.
     if len(jwt_site_fence) > 1 and not active_site_cache:
         return compile_site_selection_menu(state)
+
+    # Schema-driven deterministic fallback when model skips tool calling.
+    schema_entities = data_retrieval_engine.SCHEMA_CATALOG.get("entities", {})
+
+    inferred_entities = []
+    for entity_name, entity_meta in schema_entities.items():
+        alias_pool = entity_meta.get("aliases", []) + [entity_name]
+        for alias in alias_pool:
+            alias_text = str(alias).lower().strip()
+            if alias_text and re.search(rf"\b{re.escape(alias_text)}\b", normalized_query):
+                inferred_entities.append(entity_name)
+                break
+
+    # Preserve schema order and uniqueness.
+    inferred_entities = [e for e in schema_entities.keys() if e in set(inferred_entities)]
+
+    # Infer intent/aggregation in a generic way and gate execution to supported operations.
+    wants_count = bool(re.search(r"\b(how many|count|number of|total)\b", normalized_query))
+    intent_type = "DATA_AGGREGATION" if wants_count else "DATA_RETRIEVAL"
+
+    semantic_filters = []
+    if intent_type == "DATA_AGGREGATION":
+        if inferred_entities and "count" in schema_entities[inferred_entities[0]].get("allowed_aggregations", {}):
+            semantic_filters.append("count")
+        else:
+            # Cannot run deterministic aggregation when schema doesn't allow it.
+            inferred_entities = []
+
+    # Infer enum-based predicate filters from schema metadata without hardcoded terms.
+    for entity_name in inferred_entities:
+        entity_meta = schema_entities.get(entity_name, {})
+        for _, col_meta in (entity_meta.get("column_metadata", {}) or {}).items():
+            enum_map = col_meta.get("enum_map", {}) or {}
+            for canonical_value, synonyms in enum_map.items():
+                term_pool = {str(canonical_value).lower().strip()} | {str(s).lower().strip() for s in (synonyms or [])}
+                if any(term and re.search(rf"\b{re.escape(term)}\b", normalized_query) for term in term_pool):
+                    canonical_token = str(canonical_value).lower().strip()
+                    if canonical_token and canonical_token not in semantic_filters:
+                        semantic_filters.append(canonical_token)
+
+    if inferred_entities:
+        runtime_sites = active_site_cache if active_site_cache else jwt_site_fence
+        computed_context = {
+            "company_id": active_company_cache if active_company_cache else jwt_company_fence,
+            "site_id": runtime_sites,
+            "user_id": state.get("user_id")
+        }
+
+        print("\n🧮" + "─"*18 + " SCHEMA-DRIVEN DETERMINISTIC FALLBACK EXECUTION " + "─"*18, file=sys.stderr)
+        print(json.dumps({
+            "subjects": inferred_entities,
+            "intent_type": intent_type,
+            "session_context": computed_context,
+            "semantic_filters": semantic_filters
+        }, indent=2, default=str), file=sys.stderr)
+
+        try:
+            db_rows_matrix = data_retrieval_engine.run_compiled_mcp_query(
+                subjects=inferred_entities,
+                intent_type=intent_type,
+                session_context=computed_context,
+                semantic_filters=semantic_filters,
+                aggregation_column=None,
+                search_keyword=None
+            )
+
+            print("\n📝" + "─"*32 + " DYNAMICALLY GENERATED SQL COMMAND " + "─"*31, file=sys.stderr)
+            if hasattr(data_retrieval_engine, "LAST_COMPILED_SQL"):
+                print(getattr(data_retrieval_engine, "LAST_COMPILED_SQL"), file=sys.stderr)
+            print("─"*100 + "\n", file=sys.stderr)
+
+            print("\n📦" + "─"*33 + " MCP RAW RESULT PAYLOAD " + "─"*33, file=sys.stderr)
+            print(json.dumps(db_rows_matrix, indent=2, default=str), file=sys.stderr)
+            print("─"*100 + "\n", file=sys.stderr)
+
+            count_value = None
+            if isinstance(db_rows_matrix, list) and db_rows_matrix:
+                first_row = db_rows_matrix[0]
+                if isinstance(first_row, dict):
+                    count_value = first_row.get("count")
+                    if count_value is None:
+                        for key, val in first_row.items():
+                            if "count" in str(key).lower():
+                                count_value = val
+                                break
+                elif isinstance(first_row, (list, tuple)) and first_row:
+                    count_value = first_row[0]
+
+            if count_value is not None:
+                answer_text = f"Based on the live record database snapshot, the current count is {int(count_value)}."
+            elif isinstance(db_rows_matrix, list):
+                answer_text = f"Based on the live record database snapshot, I found {len(db_rows_matrix)} matching records."
+            else:
+                answer_text = "I executed the query, but could not summarize a numeric result from the payload."
+
+            return {
+                "messages": [AIMessage(content=answer_text)],
+                "pending_user_query": None,
+                "awaiting_site_selection": False
+            }
+        except Exception as deterministic_fault:
+            print(f"Deterministic fallback failed: {str(deterministic_fault)}", file=sys.stderr)
+            print("─"*100 + "\n", file=sys.stderr)
 
     # Otherwise return a deterministic retry response without stale synthesis.
     fallback_text = (
@@ -883,8 +1090,8 @@ def route_next_node(state: AgentState):
     if has_active_tool_call:
         return "execute_tools"
 
-    # Step 2.5: Orchestrator returned no tool call while a pending query exists.
-    if last_message.type == "ai" and pending_user_query and not has_active_tool_call:
+    # Step 2.5: Orchestrator returned no tool call, route to deterministic recovery.
+    if last_message.type == "ai" and not has_active_tool_call:
         flat_text = str(last_message.content)
         if "MULTIPLE FACILITY SITES" not in flat_text and "MULTIPLE CORPORATE ACCOUNTS" not in flat_text:
             return "recover_no_tool_after_orchestrator"
@@ -1019,7 +1226,7 @@ if __name__ == "__main__":
     print("📋 SIMULATING SECURED INGEST ENVELOPE PRIVILEGES...")
     
     mock_jwt_company_fence = [1000245] #
-    mock_jwt_site_fence = [2223399, 2223449]
+    mock_jwt_site_fence = [2223399,22223449]
     
     print(f"   - Company Privilege Fence Scope : {mock_jwt_company_fence}")
     print(f"   - Site Facility Privilege Scope  : {mock_jwt_site_fence}")
