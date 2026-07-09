@@ -425,6 +425,9 @@ def execute_graph_tools(state: AgentState):
     if isinstance(last_message, HumanMessage):
         flat_text = str(last_message.content).lower().strip()
         digits_match = re.findall(r'\b\d+\b', flat_text)
+        # On normal query turns, clear stale pending prompt so synthesis does not reuse prior questions.
+        if not awaiting_site_selection and not digits_match and not ("all" in flat_text or "all sites" in flat_text):
+            pending_user_query = None
         if digits_match:
             target_digit_id = int(digits_match[0]) # Target the first extracted digit integer slot
             if target_digit_id in jwt_company_fence and not active_company_cache:
@@ -945,13 +948,22 @@ def generate_conversational_response(state: AgentState):
     
     messages = state["messages"]
     
-    # Prefer pending query if available; otherwise use the latest human message.
-    user_initial_prompt = state.get("pending_user_query") or "What is the requested data lookup?"
-    if user_initial_prompt == "What is the requested data lookup?":
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                user_initial_prompt = msg.content
-                break
+    # Use latest human query by default. Only reuse pending query during active site-selection flow.
+    pending_user_query = state.get("pending_user_query")
+    awaiting_site_selection = bool(state.get("awaiting_site_selection", False))
+
+    latest_human_prompt = "What is the requested data lookup?"
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            latest_human_prompt = str(msg.content)
+            break
+
+    user_initial_prompt = latest_human_prompt
+    if awaiting_site_selection:
+        selection_text = latest_human_prompt.lower().strip()
+        is_selection_reply = bool(re.findall(r'\b\d+\b', selection_text)) or bool(re.search(r'\ball\b', selection_text))
+        if is_selection_reply and pending_user_query:
+            user_initial_prompt = str(pending_user_query)
             
     # ─── EXTRACTION STEP A: TRUNCATE AND COMPRESS CONTEXT WINDOW TIMELINE ───
     # We find the raw ToolMessage payload block and parse its row data cells natively
