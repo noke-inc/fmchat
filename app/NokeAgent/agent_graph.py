@@ -41,6 +41,10 @@ active_catalog = data_retrieval_engine.SCHEMA_CATALOG
 BEDROCK_REGION: str = os.getenv("BEDROCK_REGION", "us-east-2")
 BEDROCK_MODEL_ID: str = os.getenv("BEDROCK_MODEL_ID", "us.amazon.nova-micro-v1:0")
 
+NO_MATCHING_RECORDS_RESPONSE = "No matching records were found for your request."
+TOOL_EXECUTION_ERROR_RESPONSE = "Unable to retrieve that information right now. Please try again."
+ORCHESTRATOR_TOOLUSE_ERROR_RESPONSE = "Unable to process your request because it does not meet the required input criteria. Please review your request and try again with more specific or relevant information."
+
 
 # =============================================================================
 # 2. SHARED CONVERSATIONAL GRAPH STATE MATRIX
@@ -311,10 +315,10 @@ def call_bedrock_orchestrator(state: AgentState):
         "6. You MUST call the tool 'execute_storage_query' exactly once for this request."
     )
     
-    print("\n📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
-    print(system_instruction, file=sys.stderr)
-    print(f"💬 Active User Entry Payload: '{orchestrator_user_payload}'", file=sys.stderr)
-    print("─"*100 + "\n", file=sys.stderr)
+    # print("\n📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
+    # print(system_instruction, file=sys.stderr)
+    # print(f"💬 Active User Entry Payload: '{orchestrator_user_payload}'", file=sys.stderr)
+    # print("─"*100 + "\n", file=sys.stderr)
     # =============================================================================
     # ─── EXTRACTION STEP E: SECURED MEMORY CONTEXT MATRIX ROUTING ─── [🔒]
     # =============================================================================
@@ -340,7 +344,13 @@ def call_bedrock_orchestrator(state: AgentState):
     ]
     effective_human = HumanMessage(content=str(orchestrator_user_payload))
     clean_runtime_track = [SystemMessage(content=system_instruction), effective_human]
-    response_message = llm_with_tools.invoke(clean_runtime_track)
+    try:
+        response_message = llm_with_tools.invoke(clean_runtime_track)
+    except Exception as orchestrator_fault:
+        print("\n💥" + "─"*29 + " ORCHESTRATOR TOOLUSE FAILURE " + "─"*29, file=sys.stderr)
+        print(str(orchestrator_fault), file=sys.stderr)
+        print("─"*100 + "\n", file=sys.stderr)
+        return {"messages": [AIMessage(content=ORCHESTRATOR_TOOLUSE_ERROR_RESPONSE)]}
 
     print("\n🧠" + "─"*30 + " AMAZON NOVA ORCHESTRATOR RAW OUTPUT " + "─"*30, file=sys.stderr)
     print(f"AIMessage.content: {response_message.content}", file=sys.stderr)
@@ -580,9 +590,9 @@ def execute_graph_tools(state: AgentState):
                     print(getattr(data_retrieval_engine, "LAST_COMPILED_SQL"), file=sys.stderr)
                 print("─"*100 + "\n", file=sys.stderr)
 
-                print("\n📦" + "─"*33 + " MCP RAW RESULT PAYLOAD " + "─"*33, file=sys.stderr)
-                print(json.dumps(db_rows_matrix, indent=2, default=str), file=sys.stderr)
-                print("─"*100 + "\n", file=sys.stderr)
+                # print("\n📦" + "─"*33 + " MCP RAW RESULT PAYLOAD " + "─"*33, file=sys.stderr)
+                # print(json.dumps(db_rows_matrix, indent=2, default=str), file=sys.stderr)
+                # print("─"*100 + "\n", file=sys.stderr)
                 
                 if isinstance(db_rows_matrix, list):
                     for row in db_rows_matrix:
@@ -592,9 +602,26 @@ def execute_graph_tools(state: AgentState):
                             s_id_cell = row[0]
                         if s_id_cell is not None: found_site_ids.add(int(s_id_cell))
                             
-                string_payload = json.dumps(db_rows_matrix, default=str)
+                if isinstance(db_rows_matrix, list):
+                    row_count = len(db_rows_matrix)
+                    tool_status = "success_with_rows" if row_count > 0 else "success_no_rows"
+                    string_payload = json.dumps({
+                        "tool_status": tool_status,
+                        "row_count": row_count,
+                        "data": db_rows_matrix
+                    }, default=str)
+                else:
+                    string_payload = json.dumps({
+                        "tool_status": "success_with_rows",
+                        "row_count": 1,
+                        "data": db_rows_matrix
+                    }, default=str)
             except Exception as query_fault:
-                string_payload = json.dumps({"error": str(query_fault)})
+                string_payload = json.dumps({
+                    "tool_status": "error",
+                    "row_count": 0,
+                    "error": str(query_fault)
+                })
                 
             tool_responses.append(ToolMessage(content=string_payload, tool_call_id=tc_id, name=tc_name))
                 
@@ -877,7 +904,10 @@ def recover_no_tool_after_orchestrator(state: AgentState):
             if count_value is not None:
                 answer_text = f"Based on the live record database snapshot, the current count is {int(count_value)}."
             elif isinstance(db_rows_matrix, list):
-                answer_text = f"Based on the live record database snapshot, I found {len(db_rows_matrix)} matching records."
+                if len(db_rows_matrix) == 0:
+                    answer_text = NO_MATCHING_RECORDS_RESPONSE
+                else:
+                    answer_text = f"Based on the live record database snapshot, I found {len(db_rows_matrix)} matching records."
             else:
                 answer_text = "I executed the query, but could not summarize a numeric result from the payload."
 
@@ -941,10 +971,43 @@ def generate_conversational_response(state: AgentState):
         if msg.type == "tool":
             try:
                 raw_data = json.loads(msg.content)
-                if isinstance(raw_data, list) and len(raw_data) > 0:
-                    # Pick just the first 3 relevant row items to prove the structural values
+
+                # Preferred envelope format from execute_graph_tools.
+                if isinstance(raw_data, dict) and "tool_status" in raw_data:
+                    tool_status = str(raw_data.get("tool_status", "")).strip().lower()
+                    if tool_status == "success_no_rows":
+                        print("\n🛑" + "─"*25 + " DETERMINISTIC NO-DATA RESPONSE " + "─"*25, file=sys.stderr)
+                        print("Tool status indicates zero rows. Skipping synthesis.", file=sys.stderr)
+                        print("─"*100 + "\n", file=sys.stderr)
+                        return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
+
+                    if tool_status == "error":
+                        print("\n🛑" + "─"*24 + " DETERMINISTIC TOOL ERROR RESPONSE " + "─"*24, file=sys.stderr)
+                        print(f"Tool error: {raw_data.get('error')}", file=sys.stderr)
+                        print("─"*100 + "\n", file=sys.stderr)
+                        return {"messages": [AIMessage(content=TOOL_EXECUTION_ERROR_RESPONSE)]}
+
+                    payload_data = raw_data.get("data")
+                    if isinstance(payload_data, list) and len(payload_data) > 0:
+                        micro_snapshot = payload_data[:3]
+                        database_records_text = json.dumps(micro_snapshot, default=str)
+                    elif isinstance(payload_data, list) and len(payload_data) == 0:
+                        return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
+                    elif isinstance(payload_data, dict):
+                        database_records_text = json.dumps(payload_data, default=str)
+                    elif payload_data is not None:
+                        database_records_text = str(payload_data)
+                    else:
+                        return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
+
+                elif isinstance(raw_data, list) and len(raw_data) > 0:
+                    # Backward compatibility for legacy non-envelope tool payloads.
                     micro_snapshot = raw_data[:3]
                     database_records_text = json.dumps(micro_snapshot, default=str)
+                elif isinstance(raw_data, list) and len(raw_data) == 0:
+                    return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
+                elif isinstance(raw_data, dict) and "error" in raw_data:
+                    return {"messages": [AIMessage(content=TOOL_EXECUTION_ERROR_RESPONSE)]}
                 else:
                     database_records_text = str(raw_data)
             except Exception:
@@ -979,17 +1042,17 @@ def generate_conversational_response(state: AgentState):
         HumanMessage(content=f"Please answer my initial question: '{user_initial_prompt}' based on the snapshot values provided.")
     ]
 
-    print("\n🧾" + "─"*31 + " SYNTHESIS MODEL INPUT PAYLOAD " + "─"*31, file=sys.stderr)
-    print(synthesis_guideline, file=sys.stderr)
-    print(f"User synthesis prompt: Please answer my initial question: '{user_initial_prompt}' based on the snapshot values provided.", file=sys.stderr)
-    print("─"*100 + "\n", file=sys.stderr)
+    # print("\n🧾" + "─"*31 + " SYNTHESIS MODEL INPUT PAYLOAD " + "─"*31, file=sys.stderr)
+    # print(synthesis_guideline, file=sys.stderr)
+    # print(f"User synthesis prompt: Please answer my initial question: '{user_initial_prompt}' based on the snapshot values provided.", file=sys.stderr)
+    # print("─"*100 + "\n", file=sys.stderr)
     
     # Invoke your raw, un-bound client model instance safely with no tool metadata attached
     conversational_reply = _llm().invoke(clean_synthesis_track)
 
-    print("\n🧠" + "─"*30 + " SYNTHESIS MODEL RAW OUTPUT " + "─"*31, file=sys.stderr)
-    print(f"Raw synthesis content: {conversational_reply.content}", file=sys.stderr)
-    print("─"*100 + "\n", file=sys.stderr)
+    # print("\n🧠" + "─"*30 + " SYNTHESIS MODEL RAW OUTPUT " + "─"*31, file=sys.stderr)
+    # print(f"Raw synthesis content: {conversational_reply.content}", file=sys.stderr)
+    # print("─"*100 + "\n", file=sys.stderr)
     
     # ─── EXTRACTION STEP B: EXCEPTION-PROOF STRING CONVERSION ─── [▲]
     raw_response_content = conversational_reply.content
@@ -1226,7 +1289,7 @@ if __name__ == "__main__":
     print("📋 SIMULATING SECURED INGEST ENVELOPE PRIVILEGES...")
     
     mock_jwt_company_fence = [1000245] #
-    mock_jwt_site_fence = [2223399,22223449]
+    mock_jwt_site_fence = [2223399,2223449] # 2223362,2223395
     
     print(f"   - Company Privilege Fence Scope : {mock_jwt_company_fence}")
     print(f"   - Site Facility Privilege Scope  : {mock_jwt_site_fence}")
