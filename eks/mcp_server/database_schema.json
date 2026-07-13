@@ -332,6 +332,10 @@
     "site_hours": {
       "physical_table": "site_hours_suite",
       "aliases": [
+        "store hours",
+        "store hour",
+        "store timings",
+        "store time",
         "hour",
         "hours",
         "time",
