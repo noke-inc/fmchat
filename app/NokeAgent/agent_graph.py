@@ -72,6 +72,9 @@ class AgentState(TypedDict):
     # Completely replaces fake hardcoded string fallbacks across all menus! [🔒]
     metadata_names_map: Optional[dict] 
 
+        # ─── 🚀 FUTURE-PROOF PLATFORM MUTATIONS PRIMITIVES ───
+    active_mutation_intent: Optional[str]        # Tracks the current write-endpoint ID (e.g. "ASSIGN_USER_TO_UNIT")
+    gathered_form_payload: Optional[dict]        # Form buffer notepad cell collecting slots turn-by-turn
 
 # =============================================================================
 # 3. DEFINE THE FLAT-STRING OPTIMIZED TOOL INTERFACE SCHEMA
@@ -238,10 +241,10 @@ def call_bedrock_orchestrator(state: AgentState):
                         _all_semantic_tokens.append(_syn_lc)
     semantic_tokens_hint = ", ".join("'" + t + "'" for t in _all_semantic_tokens)
 
-    print("\n🔍" + "─"*30 + " 100% DATA-DRIVEN PRE-IDENTIFICATION SWEEP " + "─"*30, file=sys.stderr)
-    print(f"📁 Dynamically Discovered Intents (Entities): {discovered_entities}", file=sys.stderr)
-    print(f"📊 Mathematically Derived Fact Table Anchor: '{fact_table_entity}'", file=sys.stderr)
-    print("─"*104 + "\n", file=sys.stderr)
+    # print("\n🔍" + "─"*30 + " 100% DATA-DRIVEN PRE-IDENTIFICATION SWEEP " + "─"*30, file=sys.stderr)
+    # print(f"📁 Dynamically Discovered Intents (Entities): {discovered_entities}", file=sys.stderr)
+    # print(f"📊 Mathematically Derived Fact Table Anchor: '{fact_table_entity}'", file=sys.stderr)
+    # print("─"*104 + "\n", file=sys.stderr)
 
     # =============================================================================
     # ─── 🚀 EXTRACTION STEP C: NATIVE STABLE JSON SCHEMAS SPECIFICATION ─── [🔒]
@@ -288,6 +291,36 @@ def call_bedrock_orchestrator(state: AgentState):
         }
     }
 
+    # Tool Option 2: Strictly Write-Only (Transactional REST API Mutation Portal)
+   
+    native_rest_mutation_schema = {
+        "name": "mutate_storage_records",
+        "description": (
+            "Transactional write-only action portal. Invoke this tool ONLY when the operator explicitly "
+            "commands you to create, change, insert, modify, or update record values. Never call this tool for generic information requests."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string",
+                    "enum": ["UPDATE_UNIT_STATUS", "MODIFY_LOCK_PAIRING", "CREATE_NEW_UNIT", "ASSIGN_USER_TO_UNIT"],
+                    "description": "The specific operational category action track matching the REST API endpoint."
+                },
+                "resource_identifier": {
+                    "type": "string",
+                    "description": "The primary unique reference tracking identifier code cell being modified (e.g. unit ID, lock serial UUID)."
+                },
+                "mutation_payload_value": {
+                    "type": "string",
+                    "description": "The target data state value being assigned, or slot collection strings details."
+                }
+            },
+            "required": ["action_type", "resource_identifier", "mutation_payload_value"]
+        }
+    }
+
+
     # =============================================================================
     # ─── EXTRACTION STEP D: CONTEXT-LOCKED TEXT BLUEPRINT INJECTION ─── [🔒]
     # =============================================================================
@@ -323,7 +356,7 @@ def call_bedrock_orchestrator(state: AgentState):
     # ─── EXTRACTION STEP E: SECURED MEMORY CONTEXT MATRIX ROUTING ─── [🔒]
     # =============================================================================
     # Bind using the ultra-stable native dictionary envelope schema contract [🔒]
-    llm_with_tools = _llm().bind_tools([native_tool_schema])
+    llm_with_tools = _llm().bind_tools([native_tool_schema,native_rest_mutation_schema])
     # Strip historical menu/selection turns so model cannot pick up site IDs from prior context.
     # Keep only: the effective user query. Prior tool/AI/selection messages are excluded.
     from langchain_core.messages import ToolMessage as _ToolMessage
@@ -352,11 +385,11 @@ def call_bedrock_orchestrator(state: AgentState):
         print("─"*100 + "\n", file=sys.stderr)
         return {"messages": [AIMessage(content=ORCHESTRATOR_TOOLUSE_ERROR_RESPONSE)]}
 
-    print("\n🧠" + "─"*30 + " AMAZON NOVA ORCHESTRATOR RAW OUTPUT " + "─"*30, file=sys.stderr)
-    print(f"AIMessage.content: {response_message.content}", file=sys.stderr)
-    print(f"AIMessage.tool_calls: {getattr(response_message, 'tool_calls', None)}", file=sys.stderr)
-    print(f"AIMessage.additional_kwargs: {getattr(response_message, 'additional_kwargs', {})}", file=sys.stderr)
-    print("─"*100 + "\n", file=sys.stderr)
+    # print("\n🧠" + "─"*30 + " AMAZON NOVA ORCHESTRATOR RAW OUTPUT " + "─"*30, file=sys.stderr)
+    # print(f"AIMessage.content: {response_message.content}", file=sys.stderr)
+    # print(f"AIMessage.tool_calls: {getattr(response_message, 'tool_calls', None)}", file=sys.stderr)
+    # print(f"AIMessage.additional_kwargs: {getattr(response_message, 'additional_kwargs', {})}", file=sys.stderr)
+    # print("─"*100 + "\n", file=sys.stderr)
 
     return {"messages": [response_message]}
 
@@ -531,6 +564,7 @@ def execute_graph_tools(state: AgentState):
         tc_args = tool_call.get("args") if isinstance(tool_call, dict) else getattr(tool_call, "args", {})
         tc_id = tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, "id", "")
         
+        # ──────── TRACK A: STRICTLY READ-ONLY (MCP DATABASE PORTAL) ────────
         if tc_name == "execute_storage_query":
             print("\n🤖" + "─"*30 + " AMAZON NOVA INTERPOLATED TOOL PAYLOAD " + "─"*30, file=sys.stderr)
             print(json.dumps(tc_args, indent=2), file=sys.stderr)
@@ -627,7 +661,38 @@ def execute_graph_tools(state: AgentState):
                 })
                 
             tool_responses.append(ToolMessage(content=string_payload, tool_call_id=tc_id, name=tc_name))
+        
+          # ──────── 🚀 TRACK B: STRICTLY WRITE-ONLY (OUTBOUND MULTI-API REST GATEWAY) ────────
+        elif tc_name == "mutate_storage_records":
+            print("\n🌐 REST API ROUTER: Write mutation intent detected. Invoking OutboundAPIRouter.", file=sys.stderr)
+            
+            try:
+                # Instantiate the completely decoupled, scalable router module helper class
+                from outbound_api_router import OutboundAPIRouter
+                api_dispatcher = OutboundAPIRouter(computed_context)
                 
+                # Execute the dynamic parameter mapping strategy in a single pass!
+                execution_result = api_dispatcher.dispatch_mutation(
+                    action_type=tc_args.get("action_type"),
+                    resource_id=tc_args.get("resource_identifier"),
+                    value=tc_args.get("mutation_payload_value")
+                )
+                
+                # Wrap the transaction code response inside a standard payload envelope
+                string_payload = json.dumps({
+                    "tool_status": "success_with_rows" if execution_result.get("status") == "Success" else "error",
+                    "row_count": 1 if execution_result.get("status") == "Success" else 0,
+                    "data": execution_result
+                }, default=str)
+            except Exception as api_fault:
+                string_payload = json.dumps({
+                    "tool_status": "error",
+                    "row_count": 0,
+                    "error": f"Outbound router drop: {str(api_fault)}"
+                })
+                
+            tool_responses.append(ToolMessage(content=string_payload, tool_call_id=tc_id, name=tc_name))
+
     final_discovered_sites = list(found_site_ids)
     if not final_discovered_sites and not active_site_cache and len(runtime_sites) > 1:
         final_discovered_sites = [int(s_id) for s_id in runtime_sites]
@@ -933,8 +998,9 @@ def recover_no_tool_after_orchestrator(state: AgentState):
 
     return {
         "messages": [AIMessage(content=fallback_text)],
-        "pending_user_query": pending_user_query,
-        "awaiting_site_selection": awaiting_site_selection
+        "pending_user_query": None,           # Flush stale pending caches
+        "awaiting_site_selection": False,     # Flush state markers
+        "discovered_site_ids": ["LOOP_BREAK"] # Overwrite flag to clear routing traps
     }
 
 
@@ -1109,6 +1175,13 @@ def generate_conversational_response(state: AgentState):
     }
 
 
+def dynamic_mutation_gatekeeper_node(state: AgentState):
+    """Modular slot-filling validator node. Dispatches payload context to dynamic_mutation_validator."""
+    import dynamic_mutation_validator
+    
+    # Execute the generic metadata schema validation check natively
+    updated_state_package = dynamic_mutation_validator.audit_mutation_form_progress(state)
+    return updated_state_package
 #=============================================================================
 # 6. DYNAMIC PRE-ROUTING HIERARCHICAL SHIELD EDGE
 # =============================================================================
@@ -1132,14 +1205,29 @@ def route_next_node(state: AgentState):
     awaiting_site_selection = bool(state.get("awaiting_site_selection", False))
     pending_user_query = state.get("pending_user_query")
     
-    # ─── 🚀 FIXED PERMANENTLY: ACTIVE WAIT-STATE TERMINATOR ─── [▲]
-    # If the last message written to history is a text selection menu generated by 
-    # the graph, TERMINATE the execution pass immediately with END! 
-    # This stops the graph from sliding forward into conversational text generation!
-    if last_message.type == "ai" and not hasattr(last_message, "tool_calls"):
-        flat_text = str(last_message.content)
-        if "MULTIPLE FACILITY SITES" in flat_text or "MULTIPLE CORPORATE ACCOUNTS" in flat_text:
-            print("\n🛑 ROUTER: Selection menu displayed. Pausing state graph execution turn cleanly.", file=sys.stderr)
+     # Track the active dynamic form context cell parameters
+    mutation_intent = state.get("active_mutation_intent")
+    has_active_form_open = mutation_intent and mutation_intent != "FORM_COMPLETE"
+
+    flat_text = str(last_message.content).lower().strip()
+    has_all_keyword = bool(re.search(r'\ball\b', flat_text))
+    has_site_digit = bool(re.findall(r'\b\d+\b', flat_text))
+    is_user_reply = has_all_keyword or has_site_digit
+    
+    # ─── 🚀 FIXED PERMANENTLY: EXTENDED FORM WAIT-STATE TERMINATORS ───
+    # If the last message is a missing parameter form or standard disambiguation menu,
+    # terminate the thread immediately with END to wait for user text input!
+    if "form_wait_state" in discovered_sites:
+        if last_message.type == "human":
+            # User is responding to the form prompt — process their input in the gatekeeper
+            print("\n🛠️ ROUTER: User input received for active form. Routing to Form Gatekeeper Node.", file=sys.stderr)
+            return "dynamic_mutation_gatekeeper_node"
+        print("\n🛑 ROUTER: Multi-API form data slots incomplete. Halting graph loop to wait for input parameters.", file=sys.stderr)
+        return END
+
+    if last_message.type == "ai" and not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+        if any(marker in flat_text.upper() for marker in ["MULTIPLE FACILITY SITES", "MULTIPLE CORPORATE ACCOUNTS", "MISSING REQUIRED PARAMETERS"]):
+            print("\n🛑 ROUTER: Validation menu displayed. Pausing state graph execution turn cleanly.", file=sys.stderr)
             return END
     # ──────────────────────────────────────────────────────────
 
@@ -1165,12 +1253,41 @@ def route_next_node(state: AgentState):
     if has_active_tool_call:
         return "execute_tools"
 
+       # =============================================================================
+    # ─── 🚀 UPDATED & HARDENED: INTENT-AWARE CONDITIONAL ROUTING CHANNELS ───
+    # =============================================================================
     # Step 2.5: Orchestrator returned no tool call, route to deterministic recovery.
     if last_message.type == "ai" and not has_active_tool_call:
-        flat_text = str(last_message.content)
-        if "MULTIPLE FACILITY SITES" not in flat_text and "MULTIPLE CORPORATE ACCOUNTS" not in flat_text:
-            return "recover_no_tool_after_orchestrator"
+        if "LOOP_BREAK" in discovered_sites:
+            print("\n🛑 ROUTER: Loop break triggered. Freezing execution turn.", file=sys.stderr)
+            return END
+            
+        # 🚀 FIXED PERMANENTLY: EXTENDED ACTIVE FORM FILLING SAFEPATH BYPASS
+        # If an active write transaction form session is already open across turns, or if
+        # a fresh form menu was just generated, BYPASS all emergency recovery nodes entirely!
+        mutation_intent = state.get("active_mutation_intent")
+        has_active_form_open = mutation_intent and mutation_intent != "FORM_COMPLETE"
         
+        if has_active_form_open:
+            print("\n🛠️ ROUTER: Active mutation form session detected. Routing straight to Form Gatekeeper Node.", file=sys.stderr)
+            return "dynamic_mutation_gatekeeper_node"
+            
+        # TRACK-AWARE MULTI-TURN SELECTION CHECK
+        if is_user_reply or state.get("pending_user_query"):
+            # Check if this selection turn relates to a dynamic write/mutation transaction
+            p_query = str(state.get("pending_user_query") or "").lower()
+            is_mutation_track = any(w in p_query for w in ["assign", "create", "modify", "update", "set", "change"]) or has_active_form_open
+            
+            if is_mutation_track:
+                print("\n🛠️ ROUTER: Selection response captured for mutation track. Routing to Form Gatekeeper Node.", file=sys.stderr)
+                return "dynamic_mutation_gatekeeper_node"
+            else:
+                print("\n📁 ROUTER: Selection response captured for read track. Routing to conversational_synthesis.", file=sys.stderr)
+                return "conversational_synthesis"
+                
+        if "MULTIPLE FACILITY SITES" not in flat_text and "MULTIPLE CORPORATE ACCOUNTS" not in flat_text and "MISSING REQUIRED PARAMETERS" not in flat_text:
+            return "recover_no_tool_after_orchestrator"
+
     # Step 3: If multiple sites and no active selection, show selection menu.
     if len(jwt_site_fence) > 1 and not active_site_cache and not awaiting_site_selection:
         return "trigger_site_selection"
@@ -1182,6 +1299,18 @@ def route_next_node(state: AgentState):
         has_site_digit = bool(re.findall(r'\b\d+\b', flat_text))
         if has_all_keyword or has_site_digit:
             return "execute_tools"
+
+    # Step 4.5: Initial turn human prompt routing filters
+    if last_message.type == "human" and not is_user_reply:
+        is_mutation_phrase = any(w in flat_text for w in ["assign", "create", "modify", "update", "set", "change"])
+        if is_mutation_phrase or state.get("active_mutation_intent"):
+            print("\n🛠️ ROUTER: Transactional mutation intent signature detected. Routing to Form Gatekeeper Node.", file=sys.stderr)
+            return "dynamic_mutation_gatekeeper_node"
+
+    if last_message.type == "human" and is_user_reply:
+        if state.get("active_mutation_intent") and state.get("active_mutation_intent") != "FORM_COMPLETE":
+            print("\n🔄 ROUTER: User slot input selection captured. Redirecting back into validation node.", file=sys.stderr)
+            return "dynamic_mutation_gatekeeper_node"
 
     # Step 5: Chitchat Bypass
     clean_prompt = " ".join(str(last_message.content).lower().split())
@@ -1205,12 +1334,6 @@ def route_next_node(state: AgentState):
     # Step 9: Final fallback
     return "conversational_synthesis"
 
-
-
-
-# =============================================================================
-# 6. ASSEMBLE THE COMPLETE PRODUCTION WORKFLOW STATE MACHINE
-# =============================================================================
 # =============================================================================
 # 7. ASSEMBLE THE COMPLETE PRODUCTION STATE MACHINE WORKFLOW TOPOLOGY
 # =============================================================================
@@ -1219,6 +1342,9 @@ workflow = StateGraph(AgentState)
 # Register active workspace nodes
 workflow.add_node("bedrock_orchestrator", call_bedrock_orchestrator)
 workflow.add_node("execute_tools", execute_graph_tools)
+
+workflow.add_node("dynamic_mutation_gatekeeper_node", dynamic_mutation_gatekeeper_node) 
+
 workflow.add_node("trigger_company_selection", compile_company_selection_menu)
 workflow.add_node("trigger_site_selection", compile_site_selection_menu)
 workflow.add_node("conversational_synthesis", generate_conversational_response)
@@ -1234,6 +1360,7 @@ workflow.add_conditional_edges(
     {
         "trigger_company_selection": "trigger_company_selection",
         "trigger_site_selection": "trigger_site_selection",
+        "dynamic_mutation_gatekeeper_node": "dynamic_mutation_gatekeeper_node",
         "bedrock_orchestrator": "bedrock_orchestrator",
         "conversational_synthesis": "conversational_synthesis",
         "missing_company_scope": "missing_company_scope",
@@ -1255,6 +1382,7 @@ workflow.add_conditional_edges(
         "conversational_synthesis": "conversational_synthesis",
         "missing_company_scope": "missing_company_scope",
         "missing_site_scope": "missing_site_scope",
+        "dynamic_mutation_gatekeeper_node": "dynamic_mutation_gatekeeper_node",     
         END: END
     }
 )
@@ -1266,6 +1394,7 @@ workflow.add_conditional_edges(
     {
         "trigger_site_selection": "trigger_site_selection",
         "trigger_company_selection": "trigger_company_selection",
+        "dynamic_mutation_gatekeeper_node": "dynamic_mutation_gatekeeper_node", 
         "bedrock_orchestrator": "bedrock_orchestrator",
         "recover_no_tool_after_orchestrator": "recover_no_tool_after_orchestrator",
         "conversational_synthesis": "conversational_synthesis",
@@ -1275,6 +1404,41 @@ workflow.add_conditional_edges(
         END: END
     }
 )
+
+
+
+# ─── 🚀 FIXED PERMANENTLY: FULL DISAMBIGUATION VALIDATION NODE TARGETS MAP ───
+workflow.add_conditional_edges(
+    "dynamic_mutation_gatekeeper_node",
+    route_next_node,
+    {
+        "execute_tools": "execute_tools",
+        "dynamic_mutation_gatekeeper_node": "dynamic_mutation_gatekeeper_node",
+        "conversational_synthesis": "conversational_synthesis",
+        # Added emergency recovery and menu tracks as valid targets to make the edge exception-proof!
+        "recover_no_tool_after_orchestrator": "recover_no_tool_after_orchestrator",
+        "trigger_site_selection": "trigger_site_selection",
+        "trigger_company_selection": "trigger_company_selection",
+        END: END
+    }
+)
+
+
+# ─── 🚦 STEP 5: ROUTE PATHS OUT OF THE EMERGENCY NO-TOOL RECOVERY NODE ───
+# Added the critical missing self-reference loopback key token channel!
+workflow.add_conditional_edges(
+    "recover_no_tool_after_orchestrator",
+    route_next_node,
+    {
+        "trigger_site_selection": "trigger_site_selection",
+        "dynamic_mutation_gatekeeper_node": "dynamic_mutation_gatekeeper_node", # Mutation form re-route
+        "conversational_synthesis": "conversational_synthesis",
+        # 🚀 THE CRITICAL MISSING LINK ROUTING CHANNEL CELL:
+        "recover_no_tool_after_orchestrator": "recover_no_tool_after_orchestrator", 
+        END: END
+    }
+)
+
 
 # Hard-wired static termination edges for your wait-state menus
 workflow.add_edge("trigger_company_selection", END)
@@ -1286,7 +1450,6 @@ workflow.add_edge("recover_no_tool_after_orchestrator", END)
 
 # Compile into an executable ready-to-run state machine application object
 agent_brain_app = workflow.compile()
-
 
 # =============================================================================
 # 7. LOCAL PLAYGROUND TESTING MATRIX CONTROL CENTER (HARDENED INTERACTIVE LOOP)
@@ -1300,8 +1463,8 @@ if __name__ == "__main__":
     print("═"*80)
     print("📋 SIMULATING SECURED INGEST ENVELOPE PRIVILEGES...")
     
-    mock_jwt_company_fence = [1000245] #
-    mock_jwt_site_fence = [2223399,2223449] # 2223362,2223395
+    mock_jwt_company_fence = [1000245]
+    mock_jwt_site_fence = [2223399,2223449]  #2223449 Simulating a multi-site authorization boundary
     
     print(f"   - Company Privilege Fence Scope : {mock_jwt_company_fence}")
     print(f"   - Site Facility Privilege Scope  : {mock_jwt_site_fence}")
@@ -1314,17 +1477,17 @@ if __name__ == "__main__":
         "user_id": 1032127,
         "company_id": mock_jwt_company_fence,
         "site_id": mock_jwt_site_fence,
-        "active_session_company": [], # Starts empty to test your hierarchy gates
-        "active_session_site": [],    # Starts empty to test your hierarchy gates
+        "active_session_company": [],  # Starts empty to test your hierarchy gates
+        "active_session_site": [],     # Starts empty to test your hierarchy gates
         "discovered_company_ids": [],
         "discovered_site_ids": [],
         "metadata_names_map": {},
         "pending_user_query": None,
-        "awaiting_site_selection": False
+        "awaiting_site_selection": False,
+        # 🚀 Initialize generic dynamic mutation form storage primitives!
+        "active_mutation_intent": None,
+        "gathered_form_payload": {}
     }
-
-    # Start the persistent interactive command line loop
-   # agent_graph.py -> Inside your __main__ block loop at the absolute bottom
 
     # Start the persistent interactive command line loop
     while True:
@@ -1339,7 +1502,7 @@ if __name__ == "__main__":
                 print("\n👋 Terminal loop terminated cleanly. Exiting workspace context.\n")
                 break
 
-            # ─── FIXED PERMANENTLY: SESSION PURGE EXPLICIT TRIGGER ─── [🔒]
+            # ─── SESSION PURGE EXPLICIT TRIGGER ───
             if user_raw_input.lower() in ["clear session", "clear", "reset"]:
                 print("\n🔄" + "─"*32 + " SESSION CACHE PURGE EXECUTED " + "─"*32, file=sys.stderr)
                 session_rolling_state = {
@@ -1353,11 +1516,14 @@ if __name__ == "__main__":
                     "discovered_site_ids": [],
                     "metadata_names_map": {},
                     "pending_user_query": None,
-                    "awaiting_site_selection": False
+                    "awaiting_site_selection": False,
+                    "active_mutation_intent": None,
+                    "gathered_form_payload": {}
                 }
                 print("🔄 Context memory cleared! Restored to broad portfolio view.\n")
                 continue
 
+            # ─── LOCAL ADHOC SECURITY TEST ACTIONS ───
             if user_raw_input.lower() in ["no company", "simulate no company"]:
                 session_rolling_state["company_id"] = []
                 session_rolling_state["active_session_company"] = []
@@ -1365,12 +1531,12 @@ if __name__ == "__main__":
                 session_rolling_state["awaiting_site_selection"] = False
                 print("\n🧪 Local test mode: company scope cleared for this session.")
                 continue
-
+                
             if user_raw_input.lower() in ["restore company", "simulate company"]:
                 session_rolling_state["company_id"] = list(mock_jwt_company_fence)
                 print("\n🧪 Local test mode: company scope restored.")
                 continue
-
+                
             if user_raw_input.lower() in ["no site", "simulate no site"]:
                 session_rolling_state["site_id"] = []
                 session_rolling_state["active_session_site"] = []
@@ -1378,7 +1544,7 @@ if __name__ == "__main__":
                 session_rolling_state["awaiting_site_selection"] = False
                 print("\n🧪 Local test mode: site scope cleared for this session.")
                 continue
-
+                
             if user_raw_input.lower() in ["restore site", "simulate site"]:
                 session_rolling_state["site_id"] = list(mock_jwt_site_fence)
                 session_rolling_state["active_session_site"] = []
@@ -1386,7 +1552,7 @@ if __name__ == "__main__":
                 session_rolling_state["awaiting_site_selection"] = False
                 print("\n🧪 Local test mode: site scope restored.")
                 continue
-
+                
             if user_raw_input.lower() in ["clear active site", "simulate clear active site"]:
                 session_rolling_state["active_session_site"] = []
                 session_rolling_state["awaiting_site_selection"] = False
@@ -1394,21 +1560,28 @@ if __name__ == "__main__":
                 print("\n🧪 Local test mode: active site selection cache cleared.")
                 continue
 
-            # ─── 🚀 FIXED PERMANENTLY: CONTEXT APPEND TRACKING ─── [🔒]
-            # Instead of resetting the array block with '=' every turn, we use '.append()'
-            # This maintains your complete multi-turn conversational history pipeline!
+            # ─── 🚀 FIXED PERMANENTLY: SAFE CONTEXT APPEND ACCUMULATION ───
+            # Append the human prompt cleanly. LangGraph will return the comprehensive accumulated timeline
             session_rolling_state["messages"].append(HumanMessage(content=user_raw_input))
             
-            # Execute the compiled LangGraph workflow state machine using the rolling memory logs [🔒]
+            # Execute the compiled LangGraph workflow state machine using the rolling memory logs
             updated_state_output = agent_brain_app.invoke(session_rolling_state)
-
-            # ─── CRITICAL STATE PERSISTENCE CROSSOVER BRIDGE ───
-            # Preserve full running history by appending only newly emitted messages.
-            new_messages = updated_state_output.get("messages", []) or []
-            if new_messages:
-                session_rolling_state["messages"].extend(new_messages)
             
-            # Synchronize configuration parameter overrides [🔒]
+            # ─── 🚀 FIXED PERMANENTLY: HARD-WIRED RE-ALIGN MESSAGES SYNCHRONIZATION ───
+            # Avoid using .extend() which duplicates strings and poisons the next turn pass.
+            # We copy over the official compiled graph message timeline reference explicitly!
+            if "messages" in updated_state_output and updated_state_output["messages"]:
+                session_rolling_state["messages"] = updated_state_output["messages"]
+                
+                final_response_message = updated_state_output["messages"][-1]
+                # If a final node emitted plain text content, display it on screen cleanly
+                if final_response_message.content and final_response_message.type == "ai" and not hasattr(final_response_message, "tool_calls"):
+                    flat_content_text = str(final_response_message.content)
+                    # Filter out raw menu headers so they don't print twice across console channels
+                    if not any(marker in flat_content_text.upper() for marker in ["MISSING REQUIRED PARAMETERS", "MULTIPLE FACILITY SITES", "MULTIPLE CORPORATE ACCOUNTS"]):
+                        print(f"\n💬 AGENT RESPONSE:\n{final_response_message.content}\n")
+
+            # Synchronize configuration parameter overrides and state primitives cleanly across turns
             session_rolling_state["active_session_company"] = updated_state_output.get("active_session_company", []) or []
             session_rolling_state["active_session_site"] = updated_state_output.get("active_session_site", []) or []
             session_rolling_state["discovered_site_ids"] = updated_state_output.get("discovered_site_ids", []) or []
@@ -1416,10 +1589,14 @@ if __name__ == "__main__":
             session_rolling_state["metadata_names_map"] = updated_state_output.get("metadata_names_map", {}) or {}
             session_rolling_state["pending_user_query"] = updated_state_output.get("pending_user_query")
             session_rolling_state["awaiting_site_selection"] = bool(updated_state_output.get("awaiting_site_selection", False))
-
-            if not new_messages and session_rolling_state.get("awaiting_site_selection"):
-                print("\n⌛ Waiting for site selection. Enter a site id or ALL.")
             
+            # 🚀 Carry over form primitive states forward across conversational turns natively
+            session_rolling_state["active_mutation_intent"] = updated_state_output.get("active_mutation_intent")
+            session_rolling_state["gathered_form_payload"] = updated_state_output.get("gathered_form_payload", {}) or {}
+            
+            if not updated_state_output.get("messages") and session_rolling_state.get("awaiting_site_selection"):
+                print("\n⌛ Waiting for site selection. Enter a site id or ALL.")
+                
         except Exception as loop_fault:
             print(f"\n💥 RUNTIME FAULT INTERCEPTED: {str(loop_fault)}", file=sys.stderr)
             import traceback

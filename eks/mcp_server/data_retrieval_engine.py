@@ -338,9 +338,9 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         global LAST_COMPILED_SQL
         LAST_COMPILED_SQL = final_sql % formatted_params
          # ─── FIXED PERMANENTLY: FORCE THE EXPLICIT INTERPOLATED PRINT OUTPUT LINE NATIVELY ───
-        print("\n================ STEP 3: INTERPOLATED QUERY WITH LIVE VALUES ================ ", file=sys.stderr)
-        print(LAST_COMPILED_SQL, file=sys.stderr)
-        print("=============================================================================\n", file=sys.stderr)
+        # print("\n================ STEP 3: INTERPOLATED QUERY WITH LIVE VALUES ================ ", file=sys.stderr)
+        # print(LAST_COMPILED_SQL, file=sys.stderr)
+        # print("=============================================================================\n", file=sys.stderr)
         
     except Exception as parse_err:
         pass

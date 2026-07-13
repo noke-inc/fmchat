@@ -1,0 +1,21 @@
+{
+  "ASSIGN_USER_TO_UNIT": {
+    "endpoint_path": "/site/unit/newportal/assign/",
+    "http_method": "POST",
+    "required_fields": {
+      "firstName": { "type": "string", "prompt": "Please type the user's First Name:" },
+      "lastName": { "type": "string", "prompt": "Please type the user's Last Name:" },
+      "email": { "type": "string", "prompt": "Please type the user's Email address:" },
+      "unitUUID": { 
+        "type": "string", 
+        "prompt": "Please select a target storage Unit ID from the available units below:",
+        "dynamic_lookup_query": "SELECT id, name FROM v2_units WHERE rental_state = 'available' AND site_id IN (%s);"
+      }
+    },
+    "optional_fields": {
+      "phone": { "type": "string", "default": "1234567890" },
+      "countryCode": { "type": "string", "default": "1" },
+      "accessCode": { "type": "string", "default": "123456" }
+    }
+  }
+}
