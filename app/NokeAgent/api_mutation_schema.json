@@ -13,7 +13,7 @@
       }
     },
     "optional_fields": {
-      "phone": { "type": "string", "default": "1234567890" },
+      "phone": { "type": "string", "default": "" },
       "countryCode": { "type": "string", "default": "1" },
       "accessCode": { "type": "string", "default": "123456" }
     }

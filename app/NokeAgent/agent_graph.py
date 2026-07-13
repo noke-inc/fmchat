@@ -1301,9 +1301,12 @@ def route_next_node(state: AgentState):
             return "execute_tools"
 
     # Step 4.5: Initial turn human prompt routing filters
+    # AFTER
     if last_message.type == "human" and not is_user_reply:
         is_mutation_phrase = any(w in flat_text for w in ["assign", "create", "modify", "update", "set", "change"])
-        if is_mutation_phrase or state.get("active_mutation_intent"):
+        _active_intent = state.get("active_mutation_intent")
+        has_open_form = bool(_active_intent and _active_intent != "FORM_COMPLETE")
+        if is_mutation_phrase or has_open_form:
             print("\n🛠️ ROUTER: Transactional mutation intent signature detected. Routing to Form Gatekeeper Node.", file=sys.stderr)
             return "dynamic_mutation_gatekeeper_node"
 
@@ -1592,6 +1595,11 @@ if __name__ == "__main__":
             
             # 🚀 Carry over form primitive states forward across conversational turns natively
             session_rolling_state["active_mutation_intent"] = updated_state_output.get("active_mutation_intent")
+            
+            if session_rolling_state["active_mutation_intent"] == "FORM_COMPLETE":
+                session_rolling_state["active_mutation_intent"] = None
+                session_rolling_state["gathered_form_payload"] = {}
+
             session_rolling_state["gathered_form_payload"] = updated_state_output.get("gathered_form_payload", {}) or {}
             
             if not updated_state_output.get("messages") and session_rolling_state.get("awaiting_site_selection"):

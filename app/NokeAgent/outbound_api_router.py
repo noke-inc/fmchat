@@ -71,7 +71,7 @@ class OutboundAPIRouter:
             "firstName": parsed_fields.get("firstName", "N/A"),
             "lastName": parsed_fields.get("lastName", "N/A"),
             "email": parsed_fields.get("email", "N/A"),
-            "phone": parsed_fields.get("phone", "1234567890"),
+            "phone": parsed_fields.get("phone", ""),
             "countryCode": parsed_fields.get("countryCode", "1"),
             "accessCode": parsed_fields.get("accessCode", "123456"),
             "unitUUID": str(resource_id),
