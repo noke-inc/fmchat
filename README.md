@@ -56,6 +56,155 @@ tests/                  — E2E and unit tests
 
 ---
 
+## Agent Workflow — How It Works
+
+The agent is a **LangGraph state machine** (Amazon Nova Micro on Bedrock). Every user message flows through a central router (`route_next_node`) that decides which node to activate. There are two tracks: **Read** (DB query via MCP) and **Write** (REST API mutation via slot-filling form).
+
+### Router Priority Order
+
+| Priority | Condition | Routes To |
+|---|---|---|
+| 1 | `form_wait_state` sentinel active + HumanMessage | Form Gatekeeper |
+| 2 | AI message is a menu/form prompt | END (wait for input) |
+| 3 | No company scope in JWT | Error response |
+| 4 | No site scope in JWT | Error response |
+| 5 | AI message has a tool call | Execute Tools |
+| 6 | AI message + no tool call + non-empty text | END (final answer) |
+| 7 | Multiple sites, none selected yet | Site selection menu |
+| 8 | Human message contains mutation word (assign/create…) | Form Gatekeeper |
+| 9 | Default human message | Bedrock Orchestrator |
+
+---
+
+### Scenario 1 — "How many active units?"
+
+```
+1.  User: "how many active units?"
+2.  router → bedrock_orchestrator
+3.  Orchestrator scans database_schema.json, discovers entity "unit"
+    Builds tool call: execute_storage_query(
+      intent_type=DATA_AGGREGATION,
+      target_subjects="unit",
+      semantic_filters=["count","active"]
+    )
+4.  router → execute_tools
+5.  MCP query: SELECT COUNT(*) FROM v2_units WHERE rental_state='available' AND site_id IN (...)
+6.  router → conversational_synthesis
+7.  Nova summarises result into plain English
+8.  User sees: "There are 42 active units at your site."
+```
+
+> **Multiple sites?** The router shows a site selection menu first. After the user picks a site, the original query resumes from step 3.
+
+---
+
+### Scenario 2 — "What is the status of unit LA879?"
+
+```
+1.  User: "what is the status of unit LA879?"
+2.  router → bedrock_orchestrator
+3.  Orchestrator discovers entity "unit", maps "LA879" → search_keyword
+    Builds tool call: execute_storage_query(
+      intent_type=DATA_RETRIEVAL,
+      target_subjects="unit",
+      search_keyword="LA879"
+    )
+4.  router → execute_tools
+5.  MCP query: SELECT ... FROM v2_units WHERE site_id IN (...) AND name LIKE '%LA879%'
+6.  router → conversational_synthesis
+7.  Nova summarises: "The status of unit LA879 is 'inuse'."
+8.  User sees the answer.
+```
+
+> **No unit found?** Returns: *"No matching records were found for your request."*
+
+---
+
+### Scenario 3 — "Assign a unit?" (multi-turn form flow)
+
+```
+Turn 1 — Intent detection
+  User: "assign a unit?"
+  router detects "assign" → dynamic_mutation_gatekeeper_node
+  Gatekeeper matches intent: ASSIGN_USER_TO_UNIT
+  form_buffer = {} → required fields: firstName, lastName, email, unitUUID
+  Fetches available units from DB
+  Displays prompt: "Please type the user's First Name:"
+  Sets form_wait_state → router returns END (waits)
+
+Turn 2–4 — Field collection (one field per turn)
+  User types: "Alex" → form_buffer["firstName"] = "Alex"
+  User types: "Smith" → form_buffer["lastName"] = "Smith"
+  User types: "alex@example.com" → form_buffer["email"] = "alex@example.com"
+  Each turn: router sees form_wait_state + HumanMessage → gatekeeper → END
+
+Turn 5 — unitUUID selection
+  User types: "3185445" (7-digit unit ID)
+  form_buffer["unitUUID"] = "3185445"
+  All required fields complete ✓
+
+Turn 5 (continued) — API dispatch
+  Gatekeeper emits tool_call: mutate_storage_records(
+    action_type="ASSIGN_USER_TO_UNIT",
+    resource_identifier="3185445",
+    mutation_payload_value=JSON({firstName, lastName, email, ...})
+  )
+  router → execute_tools → OutboundAPIRouter
+  POST https://router.smartentry.noke.dev/site/unit/assign/
+  HTTP 200 → success
+  router → conversational_synthesis
+  User sees: "User successfully assigned to unit 3185445."
+
+Cleanup
+  active_mutation_intent reset to None
+  gathered_form_payload cleared → ready for next query
+```
+
+---
+
+### Workflow Diagram
+
+```mermaid
+flowchart TD
+    U([👤 User Prompt]) --> APPEND[Append HumanMessage to state]
+    APPEND --> INVOKE[agent_brain_app.invoke]
+    INVOKE --> ROUTER{route_next_node}
+
+    ROUTER -->|form_wait_state + Human| GATE
+    ROUTER -->|assign / create keyword| GATE
+    ROUTER -->|multi-site not selected| SITE_MENU[Site Selection Menu\nshow site list]
+    ROUTER -->|read query| ORCH
+
+    SITE_MENU -->|user selects site| ORCH
+
+    ORCH[call_bedrock_orchestrator\nNova Micro discovers entities\nbuilds tool call]
+
+    ORCH -->|tool_call: execute_storage_query| TOOLS
+    ORCH -->|no entities matched — out of scope| END_CLEAN([END — refusal message])
+
+    TOOLS[execute_graph_tools\nTrack A — MCP DB query\nTrack B — REST API call]
+
+    TOOLS -->|READ: DB rows in ToolMessage| SYNTH
+    TOOLS -->|WRITE: API result in ToolMessage| SYNTH
+
+    SYNTH[generate_conversational_response\nNova Micro plain-English summary]
+    SYNTH --> DISPLAY([💬 Answer shown to user])
+
+    GATE[dynamic_mutation_gatekeeper_node\nSlot-filling form engine\napi_mutation_schema.json]
+    GATE -->|fields still missing| WAIT([END — show next field prompt])
+    GATE -->|all fields complete| TOOLS
+
+    style U fill:#4A90D9,color:#fff
+    style DISPLAY fill:#27AE60,color:#fff
+    style WAIT fill:#E67E22,color:#fff
+    style END_CLEAN fill:#E74C3C,color:#fff
+    style ROUTER fill:#8E44AD,color:#fff
+    style ORCH fill:#2980B9,color:#fff
+    style GATE fill:#E67E22,color:#fff
+```
+
+---
+
 ## 1. Local Development
 
 ### Prerequisites

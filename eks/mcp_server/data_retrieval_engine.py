@@ -289,11 +289,11 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
                 where_clauses.append(f"{pred_alias}.{pred_col} IN %({pred_param})s")
                 query_params[pred_param] = tuple(canonical_list)
 
-        print("\n================ SEMANTIC PREDICATE MAPPING =================", file=sys.stderr)
-        print(f"Input predicate filters : {predicate_filters}", file=sys.stderr)
-        print(f"Resolved predicates     : {resolved_predicates}", file=sys.stderr)
-        print(f"Unresolved predicates   : {unresolved_tokens}", file=sys.stderr)
-        print("==============================================================\n", file=sys.stderr)
+        # print("\n================ SEMANTIC PREDICATE MAPPING =================", file=sys.stderr)
+        # print(f"Input predicate filters : {predicate_filters}", file=sys.stderr)
+        # print(f"Resolved predicates     : {resolved_predicates}", file=sys.stderr)
+        # print(f"Unresolved predicates   : {unresolved_tokens}", file=sys.stderr)
+        # print("==============================================================\n", file=sys.stderr)
     # ================================# 
     # ─── 6. STRICT TYPE-DRIVEN TEXT SEARCH BUILDER ───#
     #  =====================================

@@ -42,7 +42,8 @@ BEDROCK_REGION: str = os.getenv("BEDROCK_REGION", "us-east-2")
 BEDROCK_MODEL_ID: str = os.getenv("BEDROCK_MODEL_ID", "us.amazon.nova-micro-v1:0")
 
 NO_MATCHING_RECORDS_RESPONSE = "No matching records were found for your request."
-TOOL_EXECUTION_ERROR_RESPONSE = "Unable to retrieve that information right now. Please try again."
+HELP_CENTER_LINK = "\n\nNeed assistance? Visit our [Help Center](https://www.janusintl.com/knowledge) for guides and support."
+TOOL_EXECUTION_ERROR_RESPONSE = "Unable to retrieve that information right now. Please try again." + HELP_CENTER_LINK
 ORCHESTRATOR_TOOLUSE_ERROR_RESPONSE = "Unable to process your request because it does not meet the required input criteria. Please review your request and try again with more specific or relevant information."
 
 
@@ -380,12 +381,17 @@ def call_bedrock_orchestrator(state: AgentState):
     try:
         response_message = llm_with_tools.invoke(clean_runtime_track)
     except Exception as orchestrator_fault:
+        error_str = str(orchestrator_fault)
         print("\n💥" + "─"*29 + " ORCHESTRATOR TOOLUSE FAILURE " + "─"*29, file=sys.stderr)
-        print(str(orchestrator_fault), file=sys.stderr)
+        print(error_str, file=sys.stderr)
         print("─"*100 + "\n", file=sys.stderr)
+        # ToolUse format errors from Nova → return empty AIMessage so router
+        # falls through to deterministic schema-driven recovery (no LLM needed).
+        if "invalid sequence" in error_str.lower() or "tooluse" in error_str.lower():
+            return {"messages": [AIMessage(content="")]}
         return {"messages": [AIMessage(content=ORCHESTRATOR_TOOLUSE_ERROR_RESPONSE)]}
-
-    # print("\n🧠" + "─"*30 + " AMAZON NOVA ORCHESTRATOR RAW OUTPUT " + "─"*30, file=sys.stderr)
+    
+    #  print("\n🧠" + "─"*30 + " AMAZON NOVA ORCHESTRATOR RAW OUTPUT " + "─"*30, file=sys.stderr)
     # print(f"AIMessage.content: {response_message.content}", file=sys.stderr)
     # print(f"AIMessage.tool_calls: {getattr(response_message, 'tool_calls', None)}", file=sys.stderr)
     # print(f"AIMessage.additional_kwargs: {getattr(response_message, 'additional_kwargs', {})}", file=sys.stderr)
@@ -513,11 +519,11 @@ def execute_graph_tools(state: AgentState):
         "user_id": state.get("user_id")
     }
 
-    print("\n🧩" + "─"*32 + " MCP EXECUTION CONTEXT " + "─"*32, file=sys.stderr)
-    print(json.dumps(computed_context, indent=2, default=str), file=sys.stderr)
-    print(f"pending_user_query: {pending_user_query}", file=sys.stderr)
-    print(f"awaiting_site_selection: {awaiting_site_selection}", file=sys.stderr)
-    print("─"*100 + "\n", file=sys.stderr)
+    # print("\n🧩" + "─"*32 + " MCP EXECUTION CONTEXT " + "─"*32, file=sys.stderr)
+    # print(json.dumps(computed_context, indent=2, default=str), file=sys.stderr)
+    # print(f"pending_user_query: {pending_user_query}", file=sys.stderr)
+    # print(f"awaiting_site_selection: {awaiting_site_selection}", file=sys.stderr)
+    # print("─"*100 + "\n", file=sys.stderr)
     
     tool_responses = []
     found_site_ids = set()
@@ -566,9 +572,9 @@ def execute_graph_tools(state: AgentState):
         
         # ──────── TRACK A: STRICTLY READ-ONLY (MCP DATABASE PORTAL) ────────
         if tc_name == "execute_storage_query":
-            print("\n🤖" + "─"*30 + " AMAZON NOVA INTERPOLATED TOOL PAYLOAD " + "─"*30, file=sys.stderr)
-            print(json.dumps(tc_args, indent=2), file=sys.stderr)
-            print("─"*100 + "\n", file=sys.stderr)
+            # print("\n🤖" + "─"*30 + " AMAZON NOVA INTERPOLATED TOOL PAYLOAD " + "─"*30, file=sys.stderr)
+            # print(json.dumps(tc_args, indent=2), file=sys.stderr)
+            # print("─"*100 + "\n", file=sys.stderr)
             
             parsed_subjects = [s.strip() for s in tc_args.get("target_subjects", "").split(",") if s.strip()]
 
@@ -622,7 +628,7 @@ def execute_graph_tools(state: AgentState):
                     search_keyword=clean_search
                 )
                 
-                print("\n" + "📝" + "─"*32 + " DYNAMICALLY GENERATED SQL COMMAND " + "─"*31, file=sys.stderr)
+                # print("\n" + "📝" + "─"*32 + " DYNAMICALLY GENERATED SQL COMMAND " + "─"*31, file=sys.stderr)
                 if hasattr(data_retrieval_engine, "LAST_COMPILED_SQL"):
                     print(getattr(data_retrieval_engine, "LAST_COMPILED_SQL"), file=sys.stderr)
                 print("─"*100 + "\n", file=sys.stderr)
@@ -1093,14 +1099,12 @@ def generate_conversational_response(state: AgentState):
 
     if not database_records_text:
         debug_msg = (
-            "No fresh ToolMessage found after the latest HumanMessage. "
-            "Skipping synthesis to prevent stale answer generation."
+            "No matching records were found for your request." + HELP_CENTER_LINK           
         )
         print("\n🛑" + "─"*27 + " SYNTHESIS DATA GUARD ACTIVATED " + "─"*27, file=sys.stderr)
         print(debug_msg, file=sys.stderr)
         print("─"*100 + "\n", file=sys.stderr)
-        return {"messages": [AIMessage(content="I could not retrieve fresh database results for this turn. Please retry your request.")]}
-                
+        return {"messages": [AIMessage(content="I could not retrieve fresh database results for this turn. Please retry your request." + HELP_CENTER_LINK)]}        
     # Re-inject the ultra-compact, compressed database token results footprint cleanly
     compressed_rows_context = f"\n[SECURE REPLICA QUERY RESULTS SNAPSHOT]:\n{database_records_text}\n"
     
@@ -1261,7 +1265,13 @@ def route_next_node(state: AgentState):
         if "LOOP_BREAK" in discovered_sites:
             print("\n🛑 ROUTER: Loop break triggered. Freezing execution turn.", file=sys.stderr)
             return END
-            
+        # ── NEW: AI already produced a complete text answer (refusal, out-of-scope, etc.)
+        # Stop cleanly — do NOT forward to synthesis which requires a ToolMessage.
+        if flat_text and not any(m in flat_text.upper() for m in [
+            "MULTIPLE FACILITY SITES", "MULTIPLE CORPORATE ACCOUNTS", "MISSING REQUIRED PARAMETERS"
+        ]):
+            print("\n✅ ROUTER: AI produced a complete text response. Terminating cleanly.", file=sys.stderr)
+            return END
         # 🚀 FIXED PERMANENTLY: EXTENDED ACTIVE FORM FILLING SAFEPATH BYPASS
         # If an active write transaction form session is already open across turns, or if
         # a fresh form menu was just generated, BYPASS all emergency recovery nodes entirely!
@@ -1282,8 +1292,16 @@ def route_next_node(state: AgentState):
                 print("\n🛠️ ROUTER: Selection response captured for mutation track. Routing to Form Gatekeeper Node.", file=sys.stderr)
                 return "dynamic_mutation_gatekeeper_node"
             else:
-                print("\n📁 ROUTER: Selection response captured for read track. Routing to conversational_synthesis.", file=sys.stderr)
-                return "conversational_synthesis"
+                # Only synthesize if fresh tool results exist after the last human message
+                _msgs = state.get("messages", [])
+                _last_h = max((i for i, m in enumerate(_msgs) if m.type == "human"), default=-1)
+                _has_tool = any(m.type == "tool" for m in _msgs[_last_h + 1:])
+                if _has_tool:
+                    print("\n📁 ROUTER: Selection response captured for read track. Routing to conversational_synthesis.", file=sys.stderr)
+                    return "conversational_synthesis"
+                else:
+                    print("\n🔄 ROUTER: No fresh tool results — routing to deterministic recovery.", file=sys.stderr)
+                    return "recover_no_tool_after_orchestrator"
                 
         if "MULTIPLE FACILITY SITES" not in flat_text and "MULTIPLE CORPORATE ACCOUNTS" not in flat_text and "MISSING REQUIRED PARAMETERS" not in flat_text:
             return "recover_no_tool_after_orchestrator"
@@ -1578,7 +1596,7 @@ if __name__ == "__main__":
                 
                 final_response_message = updated_state_output["messages"][-1]
                 # If a final node emitted plain text content, display it on screen cleanly
-                if final_response_message.content and final_response_message.type == "ai" and not hasattr(final_response_message, "tool_calls"):
+                if final_response_message.content and final_response_message.type == "ai" and not (hasattr(final_response_message, "tool_calls") and final_response_message.tool_calls):
                     flat_content_text = str(final_response_message.content)
                     # Filter out raw menu headers so they don't print twice across console channels
                     if not any(marker in flat_content_text.upper() for marker in ["MISSING REQUIRED PARAMETERS", "MULTIPLE FACILITY SITES", "MULTIPLE CORPORATE ACCOUNTS"]):
