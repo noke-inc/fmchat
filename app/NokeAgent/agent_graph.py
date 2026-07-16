@@ -944,13 +944,45 @@ def recover_no_tool_after_orchestrator(state: AgentState):
         }, indent=2, default=str), file=sys.stderr)
 
         try:
+                # ── Schema-driven search keyword extraction ──────────────────────────
+            # Build the full schema vocabulary: entity names, aliases, column names,
+            # enum values, aggregation keys — anything the schema already knows about.
+            # Words in the user query that fall outside this vocabulary are candidates
+            # for a search_keyword (a name, unit label, email prefix, etc.)
+            _schema_vocab = set()
+            for _ev, _em in schema_entities.items():
+                _schema_vocab.add(_ev.lower())
+                for _a in (_em.get("aliases") or []):
+                    _schema_vocab.add(str(_a).lower().strip())
+                for _cn, _cm in (_em.get("column_metadata") or {}).items():
+                    _schema_vocab.add(_cn.lower())
+                    for _ca in (_cm.get("aliases") or []):
+                        _schema_vocab.add(str(_ca).lower().strip())
+                    for _canon, _syns in (_cm.get("enum_map") or {}).items():
+                        _schema_vocab.add(str(_canon).lower().strip())
+                        for _syn in (_syns or []):
+                            _schema_vocab.add(str(_syn).lower().strip())
+                for _agg in (_em.get("allowed_aggregations") or {}):
+                    _schema_vocab.add(str(_agg).lower().strip())
+
+            # Match capitalized words (proper nouns: "John", "Smith") and
+            # alphanumeric codes (unit labels: "LA879", "T138") — both are
+            # search keyword shapes. Drop anything already in schema vocabulary.
+            _kw_candidates = re.findall(
+                r'\b[A-Z][a-zA-Z]{1,}\b|\b[A-Za-z]+\d+\w*\b|\b\d+[A-Za-z]+\w*\b',
+                effective_query
+            )
+            _search_kw = next(
+                (w for w in _kw_candidates if w.lower() not in _schema_vocab),
+                None
+            )
             db_rows_matrix = data_retrieval_engine.run_compiled_mcp_query(
                 subjects=inferred_entities,
                 intent_type=intent_type,
                 session_context=computed_context,
                 semantic_filters=semantic_filters,
                 aggregation_column=None,
-                search_keyword=None
+                search_keyword=_search_kw
             )
 
             print("\n📝" + "─"*32 + " DYNAMICALLY GENERATED SQL COMMAND " + "─"*31, file=sys.stderr)
@@ -1331,6 +1363,11 @@ def route_next_node(state: AgentState):
     if last_message.type == "human" and is_user_reply:
         if state.get("active_mutation_intent") and state.get("active_mutation_intent") != "FORM_COMPLETE":
             print("\n🔄 ROUTER: User slot input selection captured. Redirecting back into validation node.", file=sys.stderr)
+            return "dynamic_mutation_gatekeeper_node"
+        # After site selection, check if the original pending query was a mutation intent
+        _pq = str(state.get("pending_user_query") or "").lower()
+        if _pq and any(w in _pq for w in ["assign", "create", "modify", "update", "set", "change"]):
+            print("\n🛠️ ROUTER: Pending mutation intent detected after site selection. Routing to Form Gatekeeper Node.", file=sys.stderr)
             return "dynamic_mutation_gatekeeper_node"
 
     # Step 5: Chitchat Bypass

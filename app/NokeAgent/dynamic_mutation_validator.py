@@ -34,6 +34,11 @@ def audit_mutation_form_progress(state: dict, schema_catalog_path: str = "api_mu
     # ─── TRACK-ISOLATED INTENT DISCOVERY ───
     if not intent:
         flat_input = str(last_message.content).lower().strip()
+        # If the last message is a bare site/company selection digit, the mutation
+        # intent is in pending_user_query — fall back to it for intent detection.
+        if re.match(r'^\d+$', flat_input):
+            flat_input = str(state.get("pending_user_query") or "").lower().strip()
+
         for candidate_intent in mutation_catalog.keys():
             words_pool = [w.lower() for w in candidate_intent.split("_")]
             
