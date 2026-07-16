@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent_gateway": "./app/NokeAgent/agent_graph.py:agent_brain_app"
+  },
+  "env": ".env"
+}

@@ -13,8 +13,9 @@ class OutboundAPIRouter:
         self.context = computed_session_context
         # Target your live domain host or internal cluster route helper URL
         self.base_url = os.getenv("API_GATEWAY_HOST", "https://router.smartentry.noke.dev")
+        token = 'eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyNDUiLCJjdXJyZW50U2l0ZSI6MjIyMzM5OSwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODQyMzEyODQsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.ZmU3NGVjZTFhYzJmYmRhYTZmNThhYTVjMGE4MjM0MzllZDBiNzdmNTI1YjVkYmJmYTNiZjk3MTMzYmJkNDQ4YQ'
         self.headers = {
-            "Authorization": f"Bearer {os.getenv('INTERNAL_SERVICE_TOKEN', 'eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyNDUiLCJjdXJyZW50U2l0ZSI6MjIyMzM5OSwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODM5NjAzNjMsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.NzM4NzU2ZGNmNGY2ZWQ5Y2IxNjcxOTBiNGQ2YjhiNDE2Y2M2MzhhZDhmMzBhNWNmZTg4ZTA4YmY0OWFjOTk5Mg')}",
+            "Authorization": f"Bearer {os.getenv('INTERNAL_SERVICE_TOKEN', token)}",
             "Content-Type": "application/json"
         }
 

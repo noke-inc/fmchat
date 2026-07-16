@@ -808,7 +808,7 @@ def compile_site_selection_menu(state: AgentState):
     prompt_text = (
         "⚠️ MULTIPLE FACILITY SITES IDENTIFIED:\n"
         f"Your lookup request maps to {len(jwt_site_fence)} different storage locations.\n"
-        "Please specify which storage property location context you wish to inspect:\n\n"
+        f"Please select the specific storage property location from the available options.\n\n"
         f"{joined_site_content}\n"
         "  -> Type 'ALL' to view an aggregated summary across the entire portfolio."
     )
