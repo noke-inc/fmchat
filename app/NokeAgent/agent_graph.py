@@ -1110,7 +1110,14 @@ def generate_conversational_response(state: AgentState):
                     elif isinstance(payload_data, list) and len(payload_data) == 0:
                         return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
                     elif isinstance(payload_data, dict):
-                        database_records_text = json.dumps(payload_data, default=str)
+                        # For mutation success: strip internal IDs/technical fields before synthesis
+                        if payload_data.get("status") == "Success":
+                            database_records_text = json.dumps({
+                                "result": "success",
+                                "summary": "The operation completed successfully"
+                            }, default=str)
+                        else:
+                            database_records_text = json.dumps(payload_data, default=str)
                     elif payload_data is not None:
                         database_records_text = str(payload_data)
                     else:

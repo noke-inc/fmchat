@@ -1,8 +1,252 @@
-// Chat endpoint config
-const AGENT_CHAT_URL =
-  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-    ? `${window.location.origin}/agent/chat`
-    : "https://5u39ntjwyj.execute-api.us-east-2.amazonaws.com/chat";
+// app.js — Noke Smart Entry AI chat UI
+// Connects to the local FastAPI server (main.py) at the same origin.
+
+const AGENT_CHAT_URL = `${window.location.origin}/agent/chat`;
+const SITES_URL      = `${window.location.origin}/api/sites`;
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let conversationId   = null;
+let selectedSiteId   = null;
+let selectedSiteName = null;
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  const launcher       = document.getElementById("chat-launcher");
+  const panel          = document.getElementById("chat-panel");
+  const closeBtn       = document.getElementById("chat-close");
+  const form           = document.getElementById("chat-form");
+  const input          = document.getElementById("chat-input");
+  const log            = document.getElementById("chat-log");
+  const siteHeader     = document.getElementById("site-header");
+  const siteHeaderName = document.getElementById("site-header-name");
+  const sitePicker     = document.getElementById("site-picker");
+  const siteButtons    = document.getElementById("site-buttons");
+  const clearBtn       = document.getElementById("clear-session-btn");
+  const sendBtn        = document.getElementById("send-btn");
+  const subtitle       = document.getElementById("header-subtitle");
+
+  // ─── Site picker ─────────────────────────────────────────────────────────
+  async function loadSites() {
+    siteButtons.innerHTML = '<span class="site-loading">Loading sites…</span>';
+    try {
+      const res   = await fetch(SITES_URL);
+      const data  = await res.json();
+      const sites = data.sites || [];
+
+      siteButtons.innerHTML = "";
+      if (!sites.length) {
+        siteButtons.innerHTML = '<span class="site-loading">No sites available.</span>';
+        return;
+      }
+      sites.forEach(site => {
+        const btn = document.createElement("button");
+        btn.type        = "button";
+        btn.className   = "site-btn";
+        btn.textContent = site.name;
+        btn.addEventListener("click", () => selectSite(site.id, site.name));
+        siteButtons.appendChild(btn);
+      });
+    } catch (err) {
+      siteButtons.innerHTML = `<span class="site-loading">Could not load sites: ${err.message}</span>`;
+    }
+  }
+
+  function selectSite(id, name) {
+    selectedSiteId   = id;
+    selectedSiteName = name;
+
+    // Show site name bar + clear button
+    siteHeaderName.textContent = `📍 ${name}`;
+    siteHeader.classList.remove("hidden");
+
+    // Hide site picker
+    sitePicker.style.display = "none";
+
+    // Update subtitle
+    subtitle.textContent = name;
+
+    // Enable chat input
+    input.disabled  = false;
+    sendBtn.disabled = false;
+    input.focus();
+
+    // Welcome message
+    appendMessage("ai", `👋 Welcome! I'm your Smart Entry AI assistant for ${name}.\n\nI can help you:\n• Look up unit statuses and details\n• Check active rentals and tenant info\n• Assign users to available units\n\nHow can I help you today?`);
+  }
+
+  // ─── Session reset ────────────────────────────────────────────────────────
+  async function resetSession() {
+    if (conversationId) {
+      try { await fetch(`${window.location.origin}/api/session/${conversationId}`, { method: "DELETE" }); }
+      catch (_) {}
+    }
+    conversationId   = null;
+    selectedSiteId   = null;
+    selectedSiteName = null;
+
+    log.innerHTML = "";
+    siteHeader.classList.add("hidden");
+    subtitle.textContent = "Select a site to begin";
+    sitePicker.style.display = "";
+    input.disabled   = true;
+    sendBtn.disabled = true;
+    input.value      = "";
+
+    await loadSites();
+  }
+
+  clearBtn.addEventListener("click", resetSession);
+
+  // ─── Render helpers ───────────────────────────────────────────────────────
+
+  /** Convert **bold** and [text](url) markdown to HTML */
+  function renderMarkdown(text) {
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
+  /** Parse a unit-options block from the agent message.
+   *  Returns { cleanText, options: [{id, name}] }
+   *  Options come from lines like: -> Select Target ID Identifier: '3185445' (5104)
+   */
+  function parseAgentMessage(raw) {
+    const unitOptions = [];
+
+    // Extract unit option lines
+    const optRe = /->.*?'(\d+)'\s*\(([^)]+)\)/g;
+    let m;
+    while ((m = optRe.exec(raw)) !== null) {
+      unitOptions.push({ id: m[1], name: m[2].trim() });
+    }
+
+    let clean = raw
+      // Strip MISSING REQUIRED PARAMETERS header line
+      .replace(/⚠️\s*MISSING REQUIRED PARAMETERS FOR TRANSACTION TRACK\s*'[^']*':\s*\n?/gi, "")
+      // Strip "Remaining fields needed: [...]" line
+      .replace(/Remaining fields needed:\s*\[[^\]]*\]\s*\n?/g, "")
+      // Strip "Available Selection Resource Records Choices:" header
+      .replace(/Available Selection Resource Records Choices:\s*\n?/g, "")
+      // Strip all unit option lines
+      .replace(/\s*->.*?'\d+'.*\n?/g, "")
+      // Strip leading/trailing blank lines
+      .replace(/^\n+/, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return { clean, unitOptions };
+  }
+
+  function appendMessage(role, rawText) {
+    const { clean, unitOptions } = role === "ai"
+      ? parseAgentMessage(rawText || "")
+      : { clean: rawText, unitOptions: [] };
+
+    if (clean) {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.innerHTML = renderMarkdown(
+        clean.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+             .replace(/\n/g, "<br>")
+      );
+      log.appendChild(div);
+    }
+
+    // Render unit buttons (names only — IDs never shown)
+    if (unitOptions.length > 0) {
+      const wrap = document.createElement("div");
+      wrap.className = "unit-options";
+      const label = document.createElement("p");
+      label.className = "unit-options-label";
+      label.textContent = "Select an available unit:";
+      wrap.appendChild(label);
+
+      unitOptions.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.type      = "button";
+        btn.className = "unit-btn";
+        btn.textContent = opt.name;
+        btn.addEventListener("click", () => {
+          // Show unit name in chat, send the internal ID to the agent
+          appendUserMessage(opt.name);
+          submitToAgent(opt.id);
+          wrap.remove();
+        });
+        wrap.appendChild(btn);
+      });
+      log.appendChild(wrap);
+    }
+
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function appendMeta(text) {
+    const div = document.createElement("div");
+    div.className   = "msg meta";
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+  }
+
+  function appendUserMessage(text) {
+    const div = document.createElement("div");
+    div.className   = "msg user";
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  // ─── Send message ─────────────────────────────────────────────────────────
+  async function submitToAgent(messageToSend) {
+    const thinking = appendMeta("Thinking…");
+    try {
+      const res = await fetch(AGENT_CHAT_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          message:         messageToSend,
+          site_id:         selectedSiteId,
+          conversation_id: conversationId,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      conversationId = data.conversation_id || conversationId;
+      thinking.remove();
+      if (data.answer && data.answer.trim()) {
+        appendMessage("ai", data.answer);
+      }
+    } catch (err) {
+      thinking.remove();
+      appendMeta(`Error: ${err.message}`);
+    }
+  }
+
+  // ─── Form submit ──────────────────────────────────────────────────────────
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const message = input.value.trim();
+    if (!message || !selectedSiteId) return;
+    input.value = "";
+    appendUserMessage(message);
+    await submitToAgent(message);
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+
+  // ─── Panel open / close ───────────────────────────────────────────────────
+  launcher.addEventListener("click", async () => {
+    panel.classList.remove("hidden");
+    if (!selectedSiteId && !log.children.length) {
+      await loadSites();
+    }
+  });
+
+  closeBtn.addEventListener("click", () => panel.classList.add("hidden"));
+});
 
 // Local MCP server (used to fetch real site list)
 const LOCAL_MCP_URL = "http://localhost:8000/mcp-http/";

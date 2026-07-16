@@ -1,211 +1,215 @@
-"""
-app/NokeAgent/main.py
+# app/NokeAgent/main.py
+# Local FastAPI server — serves the chat UI and routes messages through agent_graph.py
+# Run: python main.py   (from app/NokeAgent/ directory)
+# Open: http://localhost:9000
 
-Amazon Bedrock AgentCore Runtime entrypoint for the Noke Smart Entry agent.
-
-Stack:
-  Framework      : LangGraph  (intent-routing graph)
-  Model provider : Amazon Bedrock  (Nova Micro, configurable via BEDROCK_MODEL_ID)
-  Memory         : Short-term — LangGraph MemorySaver per session
-  Deployment     : AWS Bedrock AgentCore (CodeZip)
-
-Request payload (any of these fields):
-  {
-    "prompt":     "How many units do I have?",
-    "session_id": "user-abc-session-xyz",   # optional — drives short-term memory
-    "user_id":    1034747,                   # optional
-    "site_id":    2223363                    # optional
-  }
-
-Local dev:
-  cd <project-root>
-  agentcore dev              # browser inspector on :8080
-  agentcore dev --no-browser # TUI mode
-
-Deploy:
-  agentcore deploy
-"""
-
-import logging
-import re
+import asyncio
+import base64
+import json
 import os
-from logging.handlers import RotatingFileHandler
-from typing import Any
+import re
+import sys
+import uuid
+from pathlib import Path
+from typing import Any, Dict, Optional
 
+# ─── Path injection — must match agent_graph.py ───────────────────────────────
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_MCP_DIR  = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", "eks", "mcp_server"))
+for _p in (_MCP_DIR, _THIS_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=os.path.join(_THIS_DIR, ".env"), override=True)
+
+# ─── Hardcoded JWT (same token used in outbound_api_router.py) ────────────────
+# company=1000245  currentSite=2223399  nokeUser=1034747
+HARDCODED_JWT = (
+    "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0."
+    "eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyNDUiLCJjdXJyZW50U2l0ZSI6MjIyMzM5OSwiZGV2aWNlSWQiO"
+    "iIiLCJleHAiOjE3ODM5NjAzNjMsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYW"
+    "x0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9."
+    "NzM4NzU2ZGNmNGY2ZWQ5Y2IxNjcxOTBiNGQ2YjhiNDE2Y2M2MzhhZDhmMzBhNWNmZTg4ZTA4YmY0OWFjOTk5Mg"
+)
+
+# Make the same JWT available to OutboundAPIRouter via env var
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", HARDCODED_JWT)
+
+def _decode_jwt(token: str) -> dict:
+    try:
+        part = token.split(".")[1]
+        padded = part + "=" * (-len(part) % 4)
+        return json.loads(base64.urlsafe_b64decode(padded).decode())
+    except Exception:
+        return {}
+
+_CLAIMS      = _decode_jwt(HARDCODED_JWT)
+JWT_USER_ID  = int(_CLAIMS.get("nokeUser", 1034747))
+JWT_COMPANY  = int(str(_CLAIMS.get("company", "1000245")))
+# Both test sites — matches mock_jwt_site_fence in agent_graph.py __main__ block
+JWT_SITES    = [2223399, 2223449]
+
+# ─── Lazy imports (after path setup) ─────────────────────────────────────────
+import data_retrieval_engine
+from agent_graph import agent_brain_app
 from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
-from opentelemetry.instrumentation.langchain import LangchainInstrumentor
-from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
-from auth.noke_jwt import validate_noke_token
-from config import AGENT_AUTH_ENABLED
-from graph import build_graph          # graph.py in same directory
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+import uvicorn
 
-# ── Instrumentation ───────────────────────────────────────────────────────────
-LangchainInstrumentor().instrument()
+# ─── Static UI directory ──────────────────────────────────────────────────────
+UI_DIR = Path(_THIS_DIR).parent.parent / "ui"
 
-# Central logging configuration: console + optional rotating file handler.
-# Controlled via env vars: LOG_LEVEL (DEBUG|INFO|WARNING) and LOG_FILE (path).
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-_level = getattr(logging, LOG_LEVEL, logging.INFO)
-handlers = []
-
-# Console handler (always enabled)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(_level)
-console_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"))
-# Make console stream unicode-safe on Windows (replace unencodable chars)
-try:
-  import sys, io
-  console_stream = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-  console_handler.stream = console_stream
-except Exception:
-  pass
-handlers.append(console_handler)
-
-# Optional file handler when LOG_FILE is set
-LOG_FILE = os.getenv("LOG_FILE", "")
-if LOG_FILE:
-  try:
-    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-  except Exception:
-    pass
-  file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=5)
-  file_handler.setLevel(_level)
-  file_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"))
-  handlers.append(file_handler)
-
-logging.basicConfig(level=_level, handlers=handlers)
-
-# Route common library loggers to the configured level so their logs appear
-lib_loggers = [
-  "uvicorn", "uvicorn.error", "uvicorn.access",
-  "botocore", "boto3", "urllib3",
-  "asyncio", "aiobotocore", "httpx",
-  "langchain", "langgraph", "bedrock_agentcore", "agentcore",
-  "opentelemetry", "awscrt",
-]
-for _n in lib_loggers:
-  try:
-    logging.getLogger(_n).setLevel(_level)
-  except Exception:
-    pass
-
-# Allowlist filter: limit console/file logs to application loggers only.
-# Controlled via env var ALLOWED_LOGGER_PREFIXES (comma-separated prefixes).
-ALLOWED = os.getenv("ALLOWED_LOGGER_PREFIXES", "bedrock_agentcore,graph,app,NokeAgent,stdout,stderr")
-allowed_prefixes = [p.strip() for p in ALLOWED.split(",") if p.strip()]
-
-class _AllowedFilter(logging.Filter):
-  def __init__(self, prefixes):
-    super().__init__()
-    self.prefixes = prefixes
-
-  def filter(self, record):
-    for p in self.prefixes:
-      if record.name.startswith(p):
-        return True
-    return False
-
-filt = _AllowedFilter(allowed_prefixes)
-for h in logging.getLogger().handlers:
-  try:
-    h.addFilter(filt)
-  except Exception:
-    pass
-
-# ── AgentCore app ─────────────────────────────────────────────────────────────
-app = BedrockAgentCoreApp()
-log = app.logger
-
-# ── Build LangGraph once at cold start — MemorySaver gives short-term memory ─
-_memory = MemorySaver()
-_graph  = build_graph(checkpointer=_memory)
+# ─── In-memory session store ──────────────────────────────────────────────────
+sessions: Dict[str, Dict[str, Any]] = {}
 
 
-@app.entrypoint
-async def invoke(payload: dict[str, Any], context: Any):
-    """
-    AgentCore Runtime invocation handler.
-
-    Each session_id maps to a LangGraph thread_id, so MemorySaver retains
-    conversation history within a session (short-term memory).  AgentCore
-    Runtime ensures each user session runs in an isolated microVM.
-    """
-    session_id: str = (
-        payload.get("session_id")
-        or payload.get("sessionId")
-        or "default-session"
-    )
-    print(f"Received request: session_id={session_id} payload={payload}")
-    # First step: optional JWT auth guard controlled by AGENT_AUTH_ENABLED.
-    claims: dict | None = None
-    if AGENT_AUTH_ENABLED:
-      authorization = str(payload.get("authorization", "")).strip()
-      token = (
-        authorization.removeprefix("Bearer ").strip()
-        if authorization.startswith("Bearer ")
-        else str(payload.get("jwt_token") or payload.get("user_token") or "").strip()
-      )
-      if not token:
-        return {
-          "error": "Missing JWT token. Provide 'authorization: Bearer <token>' or 'jwt_token'."
-        }
-      try:
-        claims = validate_noke_token(token)
-      except PermissionError as e:
-        return {"error": f"JWT validation failed: {e}"}
-      except RuntimeError as e:
-        return {"error": f"JWT configuration error: {e}"}
-
-    prompt: str = payload.get("prompt") or payload.get("message", "")
-    user_id = int(claims["user_id"]) if claims else int(payload.get("user_id", 1034747))
-    site_id = int(claims["site_id"]) if claims else payload.get("site_id","2223363")
-    if site_id is not None:
-      site_id = int(site_id)
-    
-    log.info(
-        "Invoke: session=%s user_id=%s site_id=%s prompt=%r",
-        session_id, user_id, site_id, str(prompt)[:120],
-    )
-
-    if not prompt:
-        return {"error": "Missing 'prompt' or 'message' field in request."}
-
-    # LangGraph config — thread_id drives MemorySaver checkpointing
-    config = {"configurable": {"thread_id": session_id}}
-
-    company_uuid = claims["company"] if claims else payload.get("company_uuid")
-
-    result = await _graph.ainvoke(
-      {
-        "messages": [HumanMessage(content=prompt)],
-        "user_id":  user_id,
-        "site_id":  site_id,
-        "company_uuid": company_uuid,
-        "intent":   None,
-      },
-      config=config,
-    )
-
-    # Normalize answer — Bedrock may return content as a list of parts rather
-    # than a plain string (e.g. when the final message follows a tool-use turn).
-    raw = result["messages"][-1].content
-    if isinstance(raw, list):
-        answer: str = " ".join(
-            p.get("text", "") if isinstance(p, dict) else str(p) for p in raw
-        ).strip()
-    else:
-        answer: str = str(raw)
-
-    # Strip any <thinking>...</thinking> blocks that reasoning models emit.
-    # These are internal model reasoning and must never be shown to end users.
-    answer = re.sub(r"<thinking>.*?</thinking>", "", answer, flags=re.DOTALL).strip()
-
-    log.info("Answer: session=%s answer=%r", session_id, str(answer)[:200])
-
-    return {"result": answer, "session_id": session_id}
+def _new_session(site_id: int) -> Dict[str, Any]:
+    """Fresh AgentState — mirrors session_rolling_state in agent_graph.py __main__."""
+    return {
+        "messages":               [],
+        "user_id":                JWT_USER_ID,
+        "company_id":             [JWT_COMPANY],
+        "site_id":                JWT_SITES,        # full authorized fence
+        "active_session_company": [],
+        "active_session_site":    [site_id],         # pre-select → skips disambiguation menu
+        "discovered_company_ids": [],
+        "discovered_site_ids":    [],
+        "metadata_names_map":     {},
+        "pending_user_query":     None,
+        "awaiting_site_selection": False,
+        "active_mutation_intent": None,
+        "gathered_form_payload":  {},
+    }
 
 
+def _sync_session(session: Dict, output: Dict) -> None:
+    """Sync graph output back into rolling session — mirrors main loop in agent_graph.py."""
+    if output.get("messages"):
+        session["messages"] = output["messages"]
+    for key, default in [
+        ("active_session_company", []),
+        ("active_session_site",    []),
+        ("discovered_site_ids",    []),
+        ("discovered_company_ids", []),
+        ("metadata_names_map",     {}),
+    ]:
+        session[key] = output.get(key) or default
+
+    session["pending_user_query"]     = output.get("pending_user_query")
+    session["awaiting_site_selection"] = bool(output.get("awaiting_site_selection", False))
+    session["active_mutation_intent"] = output.get("active_mutation_intent")
+    session["gathered_form_payload"]  = output.get("gathered_form_payload") or {}
+
+    # Clear form state after successful dispatch
+    if session["active_mutation_intent"] == "FORM_COMPLETE":
+        session["active_mutation_intent"] = None
+        session["gathered_form_payload"]  = {}
+
+
+# ─── FastAPI app ──────────────────────────────────────────────────────────────
+app = FastAPI(title="Noke Agent Local UI")
+
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+)
+
+
+# ─── Request / Response models ────────────────────────────────────────────────
+class ChatRequest(BaseModel):
+    message: str
+    site_id: int
+    conversation_id: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    conversation_id: str
+
+
+# ─── Static file routes ───────────────────────────────────────────────────────
+@app.get("/")
+def serve_index():
+    return FileResponse(UI_DIR / "index.html")
+
+@app.get("/app.js")
+def serve_js():
+    return FileResponse(UI_DIR / "app.js", media_type="application/javascript")
+
+@app.get("/styles.css")
+def serve_css():
+    return FileResponse(UI_DIR / "styles.css", media_type="text/css")
+
+
+# ─── GET /api/sites — returns site names for the JWT fence ───────────────────
+@app.get("/api/sites")
+def get_sites():
+    try:
+        ids_sql = ", ".join(f"'{s}'" for s in JWT_SITES)
+        rows = data_retrieval_engine.execute_query(
+            f"SELECT id, name FROM sites WHERE id IN ({ids_sql});", {}
+        )
+        sites = []
+        for row in rows:
+            if isinstance(row, dict):
+                sites.append({"id": row["id"], "name": row["name"].strip()})
+            elif isinstance(row, (list, tuple)) and len(row) >= 2:
+                sites.append({"id": row[0], "name": str(row[1]).strip()})
+        return JSONResponse({"sites": sites})
+    except Exception as exc:
+        return JSONResponse({"sites": [], "error": str(exc)}, status_code=500)
+
+
+# ─── POST /agent/chat — main chat endpoint ────────────────────────────────────
+@app.post("/agent/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest):
+    conv_id = req.conversation_id or f"ui-{uuid.uuid4().hex[:8]}"
+
+    if conv_id not in sessions:
+        sessions[conv_id] = _new_session(req.site_id)
+
+    session = sessions[conv_id]
+    session["messages"].append(HumanMessage(content=req.message))
+
+    # Run synchronous graph invoke in thread pool (avoids blocking the event loop)
+    try:
+        output = await asyncio.to_thread(agent_brain_app.invoke, session)
+    except Exception:
+        return ChatResponse(
+            answer="An error occurred processing your request. Please try again.",
+            conversation_id=conv_id,
+        )
+
+    _sync_session(session, output)
+
+    # Extract last AI message text
+    answer = ""
+    if output.get("messages"):
+        last = output["messages"][-1]
+        raw  = last.content
+        if isinstance(raw, list):
+            answer = " ".join(
+                p.get("text", "") if isinstance(p, dict) else str(p) for p in raw
+            ).strip()
+        else:
+            answer = str(raw)
+
+    answer = re.sub(r"<thinking>.*?</thinking>", "", answer, flags=re.DOTALL | re.IGNORECASE).strip()
+    return ChatResponse(answer=answer, conversation_id=conv_id)
+
+
+# ─── DELETE /api/session/{conv_id} — clear a session ─────────────────────────
+@app.delete("/api/session/{conv_id}")
+def clear_session(conv_id: str):
+    sessions.pop(conv_id, None)
+    return {"status": "cleared", "conversation_id": conv_id}
+
+
+# ─── Entry point ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run()
+    print("\n🚀  Noke Agent UI  →  http://localhost:8080\n")
+    uvicorn.run(app, host="0.0.0.0", port=8080, reload=False)

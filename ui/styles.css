@@ -197,3 +197,138 @@ html, body {
   background: #fff;
   cursor: pointer;
 }
+
+/* ── Site name bar (shown after selection) ─────────────────────────────── */
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: linear-gradient(90deg, #fff0e0, #ffe8cc);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--brand-dark);
+  gap: 10px;
+}
+
+.site-header.hidden { display: none; }
+
+#site-header-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#clear-session-btn {
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+#clear-session-btn:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* ── Site picker (shown before selection) ──────────────────────────────── */
+.site-picker {
+  border-top: 1px solid var(--line);
+  padding: 14px 12px 10px;
+  background: #fffdf8;
+}
+
+.site-picker-label {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.site-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.site-btn {
+  border: 1.5px solid var(--brand);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand-dark);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+.site-btn:hover {
+  background: var(--brand);
+  color: #fff;
+  transform: translateX(2px);
+}
+
+.site-loading {
+  font-size: 0.85rem;
+  color: #888;
+  font-style: italic;
+}
+
+/* ── Unit selection buttons (inside chat) ──────────────────────────────── */
+.unit-options {
+  align-self: flex-start;
+  max-width: 90%;
+  margin-top: 4px;
+}
+
+.unit-options-label {
+  margin: 0 0 8px;
+  font-size: 0.83rem;
+  color: #666;
+  font-weight: 600;
+}
+
+.unit-btn {
+  display: inline-block;
+  margin: 3px 4px 3px 0;
+  border: 1.5px solid var(--brand);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--brand-dark);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.unit-btn:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* ── Markdown link styling in AI bubbles ───────────────────────────────── */
+.msg.ai a {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+/* ── Disabled input state ──────────────────────────────────────────────── */
+#chat-input:disabled, #send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Chat panel grid: header + site-header + log + site-picker + form ──── */
+#chat-panel {
+  grid-template-rows: auto auto 1fr auto auto;
+}

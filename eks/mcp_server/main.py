@@ -63,7 +63,7 @@ class StorageQueryArgs(BaseModel):
 # =============================================================================
 # 4. MCP TOOL REGISTRATION LAYER
 # =============================================================================
-@mcp_app.tool(args_schema=StorageQueryArgs)
+@mcp_app.tool()
 def execute_storage_query(
     intent_type: str, 
     target_subjects: List[str], 
@@ -101,6 +101,9 @@ def execute_storage_query(
     except Exception as server_error:
         # Enforce an information-leaking insulation shield: block database crash dumps from the client screen
         return json.dumps({"error": f"Data retrieval execution dropped at gateway: {str(server_error)}"})
+
+# ASGI app for uvicorn: python -m uvicorn main:app --host 0.0.0.0 --port 8000
+app = mcp_app.streamable_http_app()
 
 if __name__ == "__main__":
     # Start the standard input/output transport communication channel (stdio stream)

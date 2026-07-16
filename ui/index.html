@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Noke Local Q Chat Test</title>
+  <title>Smart Entry AI</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -14,29 +14,41 @@
   </button>
 
   <section id="chat-panel" aria-live="polite" aria-label="AI Chat panel" class="hidden">
+
+    <!-- Top header: title + close button -->
     <header class="chat-header">
       <div>
         <h1>Smart Entry AI</h1>
-        <p>Local end-to-end test UI</p>
+        <p id="header-subtitle">Select a site to begin</p>
       </div>
-      <button id="chat-close" aria-label="Close chat">Close</button>
+      <button id="chat-close" aria-label="Close chat">✕</button>
     </header>
 
-    <main id="chat-log" class="chat-log"></main>
-
-    <div id="site-selector" class="site-selector">
-      <label for="site-select">Select a site:</label>
-      <select id="site-select">
-        <option value="">-- Loading sites --</option>
-      </select>
+    <!-- Site name bar — shown after site is selected -->
+    <div id="site-header" class="site-header hidden">
+      <span id="site-header-name">📍</span>
+      <button id="clear-session-btn">Clear Session</button>
     </div>
 
+    <!-- Chat message log -->
+    <main id="chat-log" class="chat-log"></main>
+
+    <!-- Site picker — shown before site is selected -->
+    <div id="site-picker" class="site-picker">
+      <p class="site-picker-label">Choose your site to get started:</p>
+      <div id="site-buttons" class="site-buttons">
+        <span class="site-loading">Loading sites…</span>
+      </div>
+    </div>
+
+    <!-- Chat input form — disabled until site is selected -->
     <form id="chat-form" class="chat-form">
-      <textarea id="chat-input" placeholder="Type your message..." rows="2"></textarea>
-      <button id="send-btn" type="submit">Send</button>
+      <textarea id="chat-input" placeholder="Type your message…" rows="2" disabled></textarea>
+      <button id="send-btn" type="submit" disabled>Send</button>
     </form>
+
   </section>
 
-  <script src="app.js?v=20260604-1"></script>
+  <script src="app.js?v=20260716-1"></script>
 </body>
 </html>
