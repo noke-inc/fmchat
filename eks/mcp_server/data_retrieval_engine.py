@@ -279,6 +279,7 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             if not token_matched:
                 unresolved_tokens.append(token)
 
+                group_by_clause = None   # ← declare here so section 7 can read it
         for idx, ((pred_alias, pred_col), canonical_values) in enumerate(resolved_predicates.items()):
             pred_param = f"sem_{idx}"
             canonical_list = sorted(canonical_values)
@@ -286,8 +287,17 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
                 where_clauses.append(f"{pred_alias}.{pred_col} = %({pred_param})s")
                 query_params[pred_param] = canonical_list[0]
             else:
-                where_clauses.append(f"{pred_alias}.{pred_col} IN %({pred_param})s")
-                query_params[pred_param] = tuple(canonical_list)
+                if intent_type == "DATA_AGGREGATION":
+                    # Multiple states requested (e.g. available + inuse) →
+                    # use GROUP BY for per-state breakdown instead of a single combined count
+                    group_by_clause = f"{pred_alias}.{pred_col}"
+                    # Add the grouping column to SELECT so each row shows which state it is
+                    if not any(pred_col in f for f in select_fields):
+                        select_fields.insert(0, f"{pred_alias}.{pred_col}")
+                    # No WHERE filter — GROUP BY covers all values of the column
+                else:
+                    where_clauses.append(f"{pred_alias}.{pred_col} IN %({pred_param})s")
+                    query_params[pred_param] = tuple(canonical_list)
 
         # print("\n================ SEMANTIC PREDICATE MAPPING =================", file=sys.stderr)
         # print(f"Input predicate filters : {predicate_filters}", file=sys.stderr)
@@ -320,7 +330,8 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
     joins_str = " ".join(join_clauses)
     where_str = " AND ".join(where_clauses)
     if intent_type == "DATA_AGGREGATION":
-        final_sql = f"SELECT {columns_str} FROM {root_table} t0 {joins_str} WHERE {where_str};"
+        _group_by = f" GROUP BY {group_by_clause}" if (group_by_clause if 'group_by_clause' in dir() else None) else ""
+        final_sql = f"SELECT {columns_str} FROM {root_table} t0 {joins_str} WHERE {where_str}{_group_by};"
     else:
         limit_cap = SCHEMA_CATALOG["safety"]["max_limit_ceiling"]
         final_sql = f"SELECT {columns_str} FROM {root_table} t0 {joins_str} WHERE {where_str} LIMIT {limit_cap};"
