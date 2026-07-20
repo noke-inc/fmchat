@@ -471,14 +471,14 @@
   },
   "junction_bridges": {
     "unit.user": {
-      "via_table": "users_units_parameters",
-      "step_1": "users_units_parameters.unit_id = v2_units.id",
-      "step_2": "users_units_parameters.user_id = users.id"
+      "via_table": "users_roles",
+      "step_1": "users_roles.site_id = v2_units.site_id",
+      "step_2": "users_roles.user_id = users.id"
     },
     "user.unit": {
-      "via_table": "users_units_parameters",
-      "step_1": "users_units_parameters.user_id = users.id",
-      "step_2": "users_units_parameters.unit_id = v2_units.id"
+      "via_table": "users_roles",
+      "step_1": "users_roles.user_id = users.id",
+      "step_2": "users_roles.site_id = v2_units.site_id"
     },
     "user.site": {
       "via_table": "users_roles",
