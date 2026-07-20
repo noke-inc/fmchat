@@ -1112,10 +1112,11 @@ def generate_conversational_response(state: AgentState):
                     elif isinstance(payload_data, dict):
                         # For mutation success: strip internal IDs/technical fields before synthesis
                         if payload_data.get("status") == "Success":
-                            database_records_text = json.dumps({
-                                "result": "success",
-                                "summary": "The operation completed successfully"
-                            }, default=str)
+                            return {
+                                "messages": [AIMessage(content="✅ The unit has been successfully assigned to the tenant.")],
+                                "pending_user_query": None,
+                                "awaiting_site_selection": False,
+                            }
                         else:
                             database_records_text = json.dumps(payload_data, default=str)
                     elif payload_data is not None:
