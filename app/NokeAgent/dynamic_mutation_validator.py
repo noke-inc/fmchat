@@ -30,6 +30,9 @@ def audit_mutation_form_progress(state: dict, schema_catalog_path: str = "api_mu
     form_buffer = dict(raw_payload_buffer).copy()
     
     just_initialized_intent = False
+    unit_label_map = form_buffer.get("__unit_label_map", {})
+    if not isinstance(unit_label_map, dict):
+        unit_label_map = {}
     
     # ─── TRACK-ISOLATED INTENT DISCOVERY ───
     if not intent:
@@ -137,10 +140,13 @@ def audit_mutation_form_progress(state: dict, schema_catalog_path: str = "api_mu
                 if isinstance(row, dict): u_id, u_name = row.get("id"), row.get("name")
                 elif isinstance(row, (list, tuple)) and len(row) >= 2: u_id, u_name = row[0], row[1]
                 else: u_id, u_name = row, row
+                unit_label_map[str(u_id)] = str(u_name)
                 menu_lines.append(f"  -> Select Target ID Identifier: '{u_id}' ({u_name})")
                 
         menu_prompt_message = AIMessage(content="\n".join(menu_lines))
         print(f"\n{menu_prompt_message.content}\n", file=sys.stderr)
+
+        form_buffer["__unit_label_map"] = dict(unit_label_map)
         
         # Return explicit shadow copies to insulate memory reference frames [🔒]
         return {
@@ -150,30 +156,94 @@ def audit_mutation_form_progress(state: dict, schema_catalog_path: str = "api_mu
             "discovered_site_ids": ["form_wait_state"]
         }
 
-    # 🔓 SCENARIO B: FORM IS 100% COMPLETE - COMPILE TRANSACTION PAYLOAD AND DISPATCH
+    # 🔓 SCENARIO B: FORM IS 100% COMPLETE - DISPLAY CONFIRMATION BEFORE DISPATCH
     print(f"\n🔏 ALL REQUIRED TRANSACTION SLOTS GATHERED: {form_buffer}", file=sys.stderr)
-    
+
     for optional_key, optional_props in schema_rules.get("optional_fields", {}).items():
         if optional_key not in form_buffer:
             form_buffer[optional_key] = optional_props.get("default")
 
-    # Package into your uniform twin-track tool contract schema format
-    tool_call_signature = AIMessage(
-        content="Form compiled. Dispatching live database execution payloads...",
-        tool_calls=[{
-            "name": "mutate_storage_records",
-            "args": {
-                "action_type": intent,
-                "resource_identifier": str(form_buffer.get("unitUUID")),
-                "mutation_payload_value": json.dumps(form_buffer)
-            },
-            "id": "dynamic_form_call_101"
-        }]
+    awaiting_confirmation = bool(form_buffer.get("__awaiting_confirmation", False))
+    if awaiting_confirmation and isinstance(last_message, HumanMessage):
+        confirmation_reply = str(last_message.content).strip().lower()
+        proceed_words = {"proceed", "confirm", "yes", "y", "continue", "submit"}
+        cancel_words = {"cancel", "stop", "no", "n", "abort"}
+
+        if confirmation_reply in cancel_words:
+            return {
+                "messages": [AIMessage(content="Assignment canceled. No changes were made.")],
+                "active_mutation_intent": None,
+                "gathered_form_payload": {},
+                "discovered_site_ids": []
+            }
+
+        if confirmation_reply in proceed_words:
+            safe_payload = {k: v for k, v in form_buffer.items() if not str(k).startswith("__")}
+            tool_call_signature = AIMessage(
+                content="Confirmation received. Dispatching live database execution payloads...",
+                tool_calls=[{
+                    "name": "mutate_storage_records",
+                    "args": {
+                        "action_type": intent,
+                        "resource_identifier": str(safe_payload.get("unitUUID")),
+                        "mutation_payload_value": json.dumps(safe_payload)
+                    },
+                    "id": "dynamic_form_call_101"
+                }]
+            )
+
+            return {
+                "messages": [tool_call_signature],
+                "active_mutation_intent": "FORM_COMPLETE",
+                "gathered_form_payload": dict(safe_payload).copy(),
+                "discovered_site_ids": []
+            }
+
+    # First completed pass: show summary and request explicit action buttons.
+    safe_payload = {k: v for k, v in form_buffer.items() if not str(k).startswith("__")}
+    resolved_unit_name = ""
+    unit_id_cell = safe_payload.get("unitUUID")
+    if unit_id_cell is not None:
+        resolved_unit_name = str(unit_label_map.get(str(unit_id_cell), "")).strip()
+
+    # Backup DB lookup only if we do not already have a label from the dynamic picker.
+    try:
+        import data_retrieval_engine
+        if unit_id_cell is not None and not resolved_unit_name:
+            active_sites = state.get("active_session_site") or state.get("site_id") or []
+            unit_id_sql = str(unit_id_cell).replace("'", "''")
+            unit_sql = f"SELECT name FROM v2_units WHERE id = '{unit_id_sql}'"
+            if active_sites:
+                site_params = ", ".join([str(int(s)) for s in active_sites])
+                unit_sql += f" AND site_id IN ({site_params})"
+            unit_sql += " LIMIT 1;"
+            unit_rows = data_retrieval_engine.execute_query(unit_sql, {})
+            if unit_rows:
+                first_row = unit_rows[0]
+                if isinstance(first_row, dict):
+                    resolved_unit_name = str(first_row.get("name") or "").strip()
+                elif isinstance(first_row, (list, tuple)) and len(first_row) > 0:
+                    resolved_unit_name = str(first_row[0]).strip()
+    except Exception as unit_lookup_fault:
+        print(f"\n⚠️ VALIDATOR: Unit name lookup failed for confirmation summary: {str(unit_lookup_fault)}", file=sys.stderr)
+    confirmation_prompt = (
+        "Please review the assignment details before submission:\n"
+        f"- First Name: {safe_payload.get('firstName', '')}\n"
+        f"- Last Name: {safe_payload.get('lastName', '')}\n"
+        f"- Email: {safe_payload.get('email', '')}\n"
+        f"- Unit Name: {resolved_unit_name or 'Selected Unit'}\n"
+        f"- Phone: {safe_payload.get('phone', '')}\n"
+        f"- Country Code: {safe_payload.get('countryCode', '')}\n"
+        f"- Access Code: {safe_payload.get('accessCode', '')}\n\n"
+        "Confirmation Actions:\n"
+        "  -> Action: 'PROCEED' (Proceed)\n"
+        "  -> Action: 'CANCEL' (Cancel)"
     )
-    
+
+    safe_payload["__awaiting_confirmation"] = True
     return {
-        "messages": [tool_call_signature],
-        "active_mutation_intent": "FORM_COMPLETE",
-        "gathered_form_payload": dict(form_buffer).copy(),
-        "discovered_site_ids": [] 
+        "messages": [AIMessage(content=confirmation_prompt)],
+        "active_mutation_intent": intent,
+        "gathered_form_payload": dict(safe_payload).copy(),
+        "discovered_site_ids": ["confirm_wait_state"]
     }

@@ -112,12 +112,19 @@ document.addEventListener("DOMContentLoaded", () => {
    */
   function parseAgentMessage(raw) {
     const unitOptions = [];
+    const actionOptions = [];
 
     // Extract unit option lines
     const optRe = /->.*?'(\d+)'\s*\(([^)]+)\)/g;
     let m;
     while ((m = optRe.exec(raw)) !== null) {
       unitOptions.push({ id: m[1], name: m[2].trim() });
+    }
+
+    // Extract confirmation action lines
+    const actionRe = /->\s*Action:\s*'([^']+)'\s*\(([^)]+)\)/g;
+    while ((m = actionRe.exec(raw)) !== null) {
+      actionOptions.push({ value: m[1].trim(), label: m[2].trim() });
     }
 
     let clean = raw
@@ -127,20 +134,24 @@ document.addEventListener("DOMContentLoaded", () => {
       .replace(/Remaining fields needed:\s*\[[^\]]*\]\s*\n?/g, "")
       // Strip "Available Selection Resource Records Choices:" header
       .replace(/Available Selection Resource Records Choices:\s*\n?/g, "")
+      // Strip "Confirmation Actions:" header
+      .replace(/Confirmation Actions:\s*\n?/gi, "")
       // Strip all unit option lines
       .replace(/\s*->.*?'\d+'.*\n?/g, "")
+      // Strip all action option lines
+      .replace(/\s*->\s*Action:\s*'[^']+'\s*\([^)]+\)\s*\n?/g, "")
       // Strip leading/trailing blank lines
       .replace(/^\n+/, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
-    return { clean, unitOptions };
+    return { clean, unitOptions, actionOptions };
   }
 
   function appendMessage(role, rawText) {
-    const { clean, unitOptions } = role === "ai"
+    const { clean, unitOptions, actionOptions } = role === "ai"
       ? parseAgentMessage(rawText || "")
-      : { clean: rawText, unitOptions: [] };
+      : { clean: rawText, unitOptions: [], actionOptions: [] };
 
     if (clean) {
       const div = document.createElement("div");
@@ -176,6 +187,33 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       log.appendChild(wrap);
     }
+
+      // Render transaction confirmation action buttons.
+      if (actionOptions.length > 0) {
+        const wrap = document.createElement("div");
+        wrap.className = "mutation-actions";
+
+        const label = document.createElement("p");
+        label.className = "mutation-actions-label";
+        label.textContent = "Choose an action:";
+        wrap.appendChild(label);
+
+        actionOptions.forEach(opt => {
+          const actionValue = String(opt.value || "").toUpperCase();
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `action-btn ${actionValue === "CANCEL" ? "cancel" : "proceed"}`;
+          btn.textContent = opt.label;
+          btn.addEventListener("click", () => {
+            appendUserMessage(opt.label);
+            submitToAgent(actionValue || opt.label);
+            wrap.remove();
+          });
+          wrap.appendChild(btn);
+        });
+
+        log.appendChild(wrap);
+      }
 
     log.scrollTop = log.scrollHeight;
   }
@@ -252,7 +290,7 @@ document.addEventListener("DOMContentLoaded", () => {
 const LOCAL_MCP_URL = "http://localhost:8000/mcp-http/";
 
 // Hardcoded NOKE JWT for testing — replace with a fresh portal token if expired.
-const HARDCODED_NOKE_JWT = "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyMzMiLCJjdXJyZW50U2l0ZSI6MjIyMzM2MiwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODA2MDk0NjEsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.MTUxOTI3NGNiNzYxYjMzZDhlYjM3Y2EzYWU4ZWZkN2I3NTViY2NjMDk0ZjM4OWViZmZmYWUwZDBlYjVhMGMxOA";
+const HARDCODED_NOKE_JWT = "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjIiLCJjdXJyZW50U2l0ZSI6MTUsImRldmljZUlkIjoiIiwiZXhwIjoxNzg0NTYzOTYwLCJpc3MiOiJub2tlLmNvbSIsIm5va2VVc2VyIjoxMDM0NzQ3LCJzZXNzaW9uU2FsdCI6IiAiLCJ0b2tlblR5cGUiOiJ3ZWIifQ.MTA0MDI1NjQ2Zjk5NjlhYjdmYzIxY2U4NDJhYWY1NGRiODM0MzdjMWM4NzQwM2VlMDhmMDgxNjcwMjhkZWJmNg";
 
 document.addEventListener("DOMContentLoaded", () => {
   const launcher   = document.getElementById("chat-launcher");
@@ -262,6 +300,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const input      = document.getElementById("chat-input");
   const log        = document.getElementById("chat-log");
   const siteSelect = document.getElementById("site-select");
+
+  // Guard: this legacy flow expects a site <select>; skip it for current button-based UI.
+  if (!siteSelect) {
+    return;
+  }
 
   let conversationId = null;
   let selectedSiteId = null;

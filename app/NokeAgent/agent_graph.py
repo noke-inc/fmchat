@@ -1261,7 +1261,7 @@ def route_next_node(state: AgentState):
     # ─── 🚀 FIXED PERMANENTLY: EXTENDED FORM WAIT-STATE TERMINATORS ───
     # If the last message is a missing parameter form or standard disambiguation menu,
     # terminate the thread immediately with END to wait for user text input!
-    if "form_wait_state" in discovered_sites:
+    if "form_wait_state" in discovered_sites or "confirm_wait_state" in discovered_sites:
         if last_message.type == "human":
             # User is responding to the form prompt — process their input in the gatekeeper
             print("\n🛠️ ROUTER: User input received for active form. Routing to Form Gatekeeper Node.", file=sys.stderr)
