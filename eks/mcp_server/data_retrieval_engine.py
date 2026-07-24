@@ -25,6 +25,8 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         
     # Standardize all incoming entity array strings to lowercase tokens cleanly
     target_entities = {s.lower().strip() for s in subjects}
+    # Preserve original subjects order for predicate disambiguation (first-mentioned entity wins on ambiguous tokens)
+    subjects_ordered = [s.lower().strip() for s in subjects]
     
     # Session security filters will be applied in section 5 without auto-joining extra entities.
     # This prevents unnecessary joins to site/site_hours when only querying units.
@@ -236,6 +238,10 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             for entity_name, assigned_alias in alias_map.items():
                 if entity_name == root_entity:
                     continue
+                # company_id is only a valid security boundary on the root entity.
+                # When user/lock are joined tables, site_id on the root already scopes the result.
+                if session_key == "company_id":
+                    continue
                 child_meta = SCHEMA_CATALOG["entities"][entity_name]
                 child_cols = child_meta.get("allowed_columns", {})
                 if target_column_name in child_cols:
@@ -260,9 +266,10 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
     # ================================================================
     group_by_clause = None
     if predicate_filters:
-        # Resolve semantic tokens (e.g. open, inuse, active) against enum_map values.
-        # Prefer matching on the root entity first, then outward traversal entities.
-        predicate_search_order = [root_entity] + [n for n in traversal_sequence if n != root_entity]
+        # Predicate disambiguation: resolve tokens in the ORDER the user specified subjects.
+        # First-mentioned entity wins on ambiguous tokens (e.g. "open" → lock.hw_state when
+        # lock is mentioned first, vs unit.rental_state when unit is mentioned first).
+        predicate_search_order = subjects_ordered + [n for n in traversal_sequence if n not in subjects_ordered]
         resolved_predicates = {}
         unresolved_tokens = []
 
@@ -327,7 +334,19 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             if not token_matched:
                 unresolved_tokens.append(token)
 
+        # Build a set of column names that are explicitly grouped — predicates on these
+        # columns must NOT become WHERE filters when group_by_columns is set, because
+        # filtering to a single state defeats the purpose of the percentage breakdown.
+        _grouped_col_names = set()
+        if group_by_columns:
+            for _gc in group_by_columns:
+                _grouped_col_names.add(str(_gc).lower().strip())
+
         for idx, ((pred_alias, pred_col), canonical_values) in enumerate(resolved_predicates.items()):
+            # If this column is in group_by_columns, skip the WHERE filter entirely —
+            # the GROUP BY will return all values so the synthesis can compute percentages.
+            if pred_col in _grouped_col_names:
+                continue
             pred_param = f"sem_{idx}"
             canonical_list = sorted(canonical_values)
             if len(canonical_list) == 1:

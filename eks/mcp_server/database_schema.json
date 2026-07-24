@@ -118,8 +118,10 @@
               "available",
               "free",
               "open",
+              "open unit",
               "empty",
-              "vacant"
+              "vacant",
+              "unoccupied"
             ],
             "inuse": [
               "inuse",
@@ -421,8 +423,7 @@
       },
       "groupable_dimensions": ["state", "type", "login_type", "country_code"],
       "relationships": {
-        "site": "users_roles.user_id = users.id",
-        "unit": "users_units_parameters.user_id = users.id"
+        "site": "users_roles.user_id = users.id"
       }
     },
     "site": {

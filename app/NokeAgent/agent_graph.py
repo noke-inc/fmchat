@@ -364,9 +364,16 @@ def call_bedrock_orchestrator(state: AgentState):
         "7. Use 'group_by_columns' when user says 'per', 'by', 'each', 'breakdown'. Example: 'units per rental state' \u2192 group_by_columns: ['rental_state'].\n"
         "8. Use 'having_conditions' for post-group thresholds. Example: 'tenants with more than 2 units' \u2192 group_by_columns: ['user_id'], having_conditions: [{'aggregation':'count','operator':'>','value':2}].\n"
         "9. Use 'order_by' for top/most/least/sort. Example: 'top states by count' \u2192 order_by: {'column':'count','direction':'DESC'}.\n"
-        "10. For occupancy rate / percentage questions (e.g. 'occupancy %', 'how full', 'what percent are rented/occupied'), do NOT filter by a single rental_state. "
-        "Instead use group_by_columns: ['rental_state'] with semantic_filters: ['count'] only. "
-        "This returns counts for every state so the synthesis layer can compute the percentage from the full breakdown."
+        "10. For ANY percentage, rate, or 'out of total' question about unit states — including 'percentage of open units', "
+        "'what % are available', 'occupancy %', 'how full', 'what percent are rented/occupied' — "
+        "do NOT add a rental_state word to semantic_filters. "
+        "Use ONLY: intent_type='DATA_AGGREGATION', semantic_filters=['count'], group_by_columns=['rental_state']. "
+        "This returns counts for ALL states so the synthesis can compute (target_state / total) x 100. "
+        "EXAMPLE: 'percentage of open units' → semantic_filters: ['count'], group_by_columns: ['rental_state'] — NOT ['count','open'].\n"
+        "11. When a question describes a LOCK state (open, locked, unlocked, offline, hold open), the 'lock' entity MUST appear first in target_subjects. "
+        "Example: 'how many locks are open' \u2192 target_subjects: 'lock, unit, user' (lock first).\n"
+        "12. If the user asks for both a count AND individual details in the same question (e.g. 'how many X and their Y information'), "
+        "use intent_type: DATA_RETRIEVAL so full records are returned. The synthesis will count and describe them together."
     )
     
     # print("\n📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
@@ -1179,7 +1186,10 @@ def generate_conversational_response(state: AgentState):
         "3. Only if the name field is literally null (absent from the data) should you show 'Unnamed Unit'. A UUID-style or alphanumeric string is a valid name — show it as-is.\n"
         "4. For email addresses, you may show them as contact information when relevant.\n"
         "5. For numeric metrics (counts, averages, prices), show the value with its label (e.g. '12 units', '$45.00 avg price').\n"
-        "6. For occupancy/percentage questions: if the data is a rental_state breakdown with counts, sum all counts for the total, then compute (inuse_count / total) * 100. Present as: 'X of Y units are occupied (Z.Z%)'.\n\n"
+        "6. For any percentage/rate question: if the data is a rental_state GROUP BY breakdown, "
+        "sum ALL state counts for the total, identify the target state (e.g. 'available' for 'open units', 'inuse' for occupied), "
+        "then compute (target_count / total) * 100. Present as: 'X of Y units are open/available (Z.Z%)'.\n"
+        "7. When the data contains multiple records AND the user asked 'how many', count the rows yourself and lead with the total before listing details. Example: 'There are 5 open locks:'.\n\n"
         f"OPERATOR INITIAL PROMPT: '{user_initial_prompt}'\n"
         f"{compressed_rows_context}"
     )

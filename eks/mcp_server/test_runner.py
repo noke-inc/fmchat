@@ -20,6 +20,9 @@ integration_test_cases = [
         "semantic_filters": ["count", "active"],
         "aggregation_column": None,
         "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
         "session_context": {
             "site_id": [1001005]
         }
@@ -32,6 +35,9 @@ integration_test_cases = [
         "semantic_filters": [],
         "aggregation_column": None,
         "search_keyword": "Service Unit 2256149",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
         "session_context": {
             "company_id": None,
             "site_id": [1001005]
@@ -45,6 +51,9 @@ integration_test_cases = [
         "semantic_filters": ["count"],
         "aggregation_column": None,
         "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
         "session_context": {
             "company_id": None,
             "site_id": [1001005, 1001009]
@@ -58,6 +67,9 @@ integration_test_cases = [
         "semantic_filters": [],
         "aggregation_column": None,
         "search_keyword": "narrow",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
         "session_context": {
             "company_id": None,
             "site_id": [2223399, 2223449]
@@ -71,6 +83,9 @@ integration_test_cases = [
         "semantic_filters": ["count", "noke volt"],
         "aggregation_column": None,
         "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
         "session_context": {
             "company_id": None,
             "site_id": [1001005]
@@ -83,6 +98,9 @@ integration_test_cases = [
         "semantic_filters": ["count", "open"],
         "aggregation_column": None,
         "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
         "session_context": {
             "company_id": None,
             "site_id": [1001005]
@@ -96,11 +114,263 @@ integration_test_cases = [
         "semantic_filters": [],
         "aggregation_column": None,
         "search_keyword": "Tenant",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
         "session_context": {
             "company_id": None,
             "site_id": [1001005]
         }
-    }
+    },
+    # ── NEW: Unit/User Analytical Test Cases ─────────────────────────────────
+    {
+        "id": 8,
+        "prompt_scenario": "Tell me about unit Fake 3A",
+        "subjects": ["unit"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": [],
+        "aggregation_column": None,
+        "search_keyword": "Fake 3A",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 9,
+        "prompt_scenario": "Give me unit Fake 3A user information",
+        "subjects": ["unit", "user"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": [],
+        "aggregation_column": None,
+        "search_keyword": "Fake 3A",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 10,
+        "prompt_scenario": "How many units per rental state",
+        "subjects": ["unit"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": ["rental_state"],
+        "having_conditions": None,
+        "order_by": {"column": "count", "direction": "DESC"},
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 11,
+        "prompt_scenario": "How many available units",
+        "subjects": ["unit"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count", "available"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 12,
+        "prompt_scenario": "Available and occupied unit count breakdown",
+        "subjects": ["unit"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count", "available", "inuse"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 13,
+        "prompt_scenario": "Tenants renting more than 1 unit",
+        "subjects": ["unit"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": ["user_id"],
+        "having_conditions": [{"aggregation": "count", "operator": ">", "value": 1}],
+        "order_by": {"column": "count", "direction": "DESC"},
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 14,
+        "prompt_scenario": "Average price per access type",
+        "subjects": ["unit"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["avg"],
+        "aggregation_column": "details_price",
+        "search_keyword": None,
+        "group_by_columns": ["access_type"],
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 15,
+        "prompt_scenario": "Occupied units with their user info",
+        "subjects": ["unit", "user"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": ["inuse"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 16,
+        "prompt_scenario": "Unit count per access type with more than 5 units",
+        "subjects": ["unit"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": ["access_type"],
+        "having_conditions": [{"aggregation": "count", "operator": ">", "value": 5}],
+        "order_by": {"column": "count", "direction": "DESC"},
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 17,
+        "prompt_scenario": "Find user John and their unit",
+        "subjects": ["unit", "user"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": [],
+        "aggregation_column": None,
+        "search_keyword": "John",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 18,
+        "prompt_scenario": "What is the percentage of unit occupancy",
+        "subjects": ["unit"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": ["rental_state"],
+        "having_conditions": None,
+        "order_by": {"column": "count", "direction": "DESC"},
+        "session_context": {"site_id": [2223391]}
+    },
+    # ── Lock / Unit-Lock join test cases ─────────────────────────────────────
+    {
+        "id": 19,
+        "prompt_scenario": "What is the battery status of Unit LA1234",
+        "subjects": ["unit", "lock"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": [],
+        "aggregation_column": None,
+        "search_keyword": "LA1234",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391], "company_id": [1000241]}
+    },
+    {
+        "id": 20,
+        "prompt_scenario": "Show me all locked units",
+        "subjects": ["unit", "lock"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": ["locked"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391], "company_id": [1000241]}
+    },
+    {
+        "id": 21,
+        "prompt_scenario": "How many locks per hardware type",
+        "subjects": ["lock"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": ["hw_type"],
+        "having_conditions": None,
+        "order_by": {"column": "count", "direction": "DESC"},
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 22,
+        "prompt_scenario": "Show offline locks",
+        "subjects": ["lock"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": ["offline"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 23,
+        "prompt_scenario": "Find lock by MAC abc123",
+        "subjects": ["lock"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": [],
+        "aggregation_column": None,
+        "search_keyword": "abc123",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 24,
+        "prompt_scenario": "Occupied units with lock hardware version noke volt",
+        "subjects": ["unit", "lock"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": ["inuse", "noke volt"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391], "company_id": [1000241]}
+    },
+    {
+        "id": 25,
+        "prompt_scenario": "Count of locks by state breakdown",
+        "subjects": ["lock"],
+        "intent_type": "DATA_AGGREGATION",
+        "semantic_filters": ["count"],
+        "aggregation_column": None,
+        "search_keyword": None,
+        "group_by_columns": ["hw_state"],
+        "having_conditions": None,
+        "order_by": {"column": "count", "direction": "DESC"},
+        "session_context": {"site_id": [2223391]}
+    },
+    {
+        "id": 26,
+        "prompt_scenario": "Unit LA1234 user and lock details",
+        "subjects": ["unit", "user", "lock"],
+        "intent_type": "DATA_RETRIEVAL",
+        "semantic_filters": [],
+        "aggregation_column": None,
+        "search_keyword": "LA1234",
+        "group_by_columns": None,
+        "having_conditions": None,
+        "order_by": None,
+        "session_context": {"site_id": [2223391], "company_id": [1000241]}
+    },
 ]
 
 def execute_automated_matrix_suite():
@@ -127,7 +397,10 @@ def execute_automated_matrix_suite():
                 session_context=case["session_context"],
                 semantic_filters=case["semantic_filters"],
                 aggregation_column=case["aggregation_column"],
-                search_keyword=case["search_keyword"]
+                search_keyword=case["search_keyword"],
+                group_by_columns=case.get("group_by_columns") or [],
+                having_conditions=case.get("having_conditions") or [],
+                order_by=case.get("order_by") or None
             )
             
             print(f"   (Live database response rows array trace checked)")
