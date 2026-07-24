@@ -69,7 +69,10 @@ def execute_storage_query(
     target_subjects: List[str], 
     semantic_filters: Optional[List[str]] = None, 
     aggregation_column: Optional[str] = None, 
-    search_keyword: Optional[str] = None
+    search_keyword: Optional[str] = None,
+    group_by_columns: Optional[List[str]] = None,
+    having_conditions: Optional[List[dict]] = None,
+    order_by: Optional[dict] = None
 ) -> str:
     """
     Unified enterprise read-only analytics gateway portal. Use this tool whenever the operator 
@@ -92,7 +95,10 @@ def execute_storage_query(
             session_context=mock_active_session,
             semantic_filters=semantic_filters,
             aggregation_column=aggregation_column,
-            search_keyword=search_keyword
+            search_keyword=search_keyword,
+            group_by_columns=group_by_columns or [],
+            having_conditions=having_conditions or [],
+            order_by=order_by or None
         )
         
         # MCP tools must return raw strings down the execution pipe back to the orchestrator node client.

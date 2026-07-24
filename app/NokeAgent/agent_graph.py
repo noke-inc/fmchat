@@ -286,6 +286,20 @@ def call_bedrock_orchestrator(state: AgentState):
                 "aggregation_column": {
                     "type": "string",
                     "description": "The numerical metric property field required if running calculation total functions."
+                },
+                "group_by_columns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Columns to GROUP results by. Use when user says 'per', 'by', 'each', 'breakdown'. Examples: 'units per rental state' \u2192 ['rental_state'], 'count per access type' \u2192 ['access_type'], 'tenants with units' \u2192 ['user_id']."
+                },
+                "having_conditions": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Post-aggregation threshold filter. Format: [{'aggregation':'count','operator':'>','value':5}]. Use when user says 'more than', 'at least', 'over', 'less than', 'with more than'. Operators: >, <, >=, <=, =, !="
+                },
+                "order_by": {
+                    "type": "object",
+                    "description": "Sort results. Format: {'column':'count','direction':'DESC'}. Use for 'top', 'most', 'least', 'highest', 'lowest', 'sort by'."
                 }
             },
             "required": ["intent_type", "target_subjects"]
@@ -346,7 +360,13 @@ def call_bedrock_orchestrator(state: AgentState):
         "3. Route specific entity reference codes, human names, unit labels, or email values exclusively to 'search_keyword'. Example: unit name 'LA879' belongs in search_keyword.\n"
         "4. NEVER put numeric site IDs, company IDs, or any session identifier into 'search_keyword'. Site and company scope is managed by the session layer automatically.\n"
         "5. Do not invent non-existent column fields. Do not hypothesize parameters outside the provided context block.\n"
-        "6. You MUST call the tool 'execute_storage_query' exactly once for this request."
+        "6. You MUST call the tool 'execute_storage_query' exactly once for this request.\n"
+        "7. Use 'group_by_columns' when user says 'per', 'by', 'each', 'breakdown'. Example: 'units per rental state' \u2192 group_by_columns: ['rental_state'].\n"
+        "8. Use 'having_conditions' for post-group thresholds. Example: 'tenants with more than 2 units' \u2192 group_by_columns: ['user_id'], having_conditions: [{'aggregation':'count','operator':'>','value':2}].\n"
+        "9. Use 'order_by' for top/most/least/sort. Example: 'top states by count' \u2192 order_by: {'column':'count','direction':'DESC'}.\n"
+        "10. For occupancy rate / percentage questions (e.g. 'occupancy %', 'how full', 'what percent are rented/occupied'), do NOT filter by a single rental_state. "
+        "Instead use group_by_columns: ['rental_state'] with semantic_filters: ['count'] only. "
+        "This returns counts for every state so the synthesis layer can compute the percentage from the full breakdown."
     )
     
     # print("\n📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
@@ -625,7 +645,10 @@ def execute_graph_tools(state: AgentState):
                     session_context=computed_context,
                     semantic_filters=parsed_filters,
                     aggregation_column=tc_args.get("aggregation_column"),
-                    search_keyword=clean_search
+                    search_keyword=clean_search,
+                    group_by_columns=tc_args.get("group_by_columns") or [],
+                    having_conditions=tc_args.get("having_conditions") or [],
+                    order_by=tc_args.get("order_by") or None
                 )
                 
                 # print("\n" + "📝" + "─"*32 + " DYNAMICALLY GENERATED SQL COMMAND " + "─"*31, file=sys.stderr)
@@ -1105,8 +1128,7 @@ def generate_conversational_response(state: AgentState):
 
                     payload_data = raw_data.get("data")
                     if isinstance(payload_data, list) and len(payload_data) > 0:
-                        micro_snapshot = payload_data[:3]
-                        database_records_text = json.dumps(micro_snapshot, default=str)
+                        database_records_text = json.dumps(payload_data, default=str)
                     elif isinstance(payload_data, list) and len(payload_data) == 0:
                         return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
                     elif isinstance(payload_data, dict):
@@ -1126,8 +1148,7 @@ def generate_conversational_response(state: AgentState):
 
                 elif isinstance(raw_data, list) and len(raw_data) > 0:
                     # Backward compatibility for legacy non-envelope tool payloads.
-                    micro_snapshot = raw_data[:3]
-                    database_records_text = json.dumps(micro_snapshot, default=str)
+                    database_records_text = json.dumps(raw_data, default=str)
                 elif isinstance(raw_data, list) and len(raw_data) == 0:
                     return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
                 elif isinstance(raw_data, dict) and "error" in raw_data:
@@ -1150,8 +1171,15 @@ def generate_conversational_response(state: AgentState):
     
     synthesis_guideline = (
         "You are a helpful data analyst summarizing information for a site manager.\n"
-        "Your task is to analyze the provided raw replica query results snapshot below and translate it into a friendly conversational sentence.\n"
+        "Your task is to analyze the provided raw replica query results snapshot below and translate it into a friendly conversational response.\n"
         "Answer the manager's initial prompt directly, using plain text only. Do not invoke tools. Do not mention code keys or table aliases.\n\n"
+        "STRICT DISPLAY RULES — you MUST follow these without exception:\n"
+        "1. NEVER show any numeric ID values in your response. This includes: unit IDs, user IDs, site IDs, company IDs, lock IDs, or any other database integer identifiers.\n"
+        "2. ALWAYS use the EXACT value from the 'name' field for units — show it character-for-character even if it looks like a UUID or generated code. Never paraphrase or substitute it.\n"
+        "3. Only if the name field is literally null (absent from the data) should you show 'Unnamed Unit'. A UUID-style or alphanumeric string is a valid name — show it as-is.\n"
+        "4. For email addresses, you may show them as contact information when relevant.\n"
+        "5. For numeric metrics (counts, averages, prices), show the value with its label (e.g. '12 units', '$45.00 avg price').\n"
+        "6. For occupancy/percentage questions: if the data is a rental_state breakdown with counts, sum all counts for the total, then compute (inuse_count / total) * 100. Present as: 'X of Y units are occupied (Z.Z%)'.\n\n"
         f"OPERATOR INITIAL PROMPT: '{user_initial_prompt}'\n"
         f"{compressed_rows_context}"
     )

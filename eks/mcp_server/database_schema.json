@@ -21,9 +21,7 @@
         "space",
         "spaces",
         "locker",
-        "lockers",
-        "lock",
-        "locks"
+        "lockers"
       ],
       "allowed_columns": {
         "id": {
@@ -46,8 +44,26 @@
         },
         "details_price": {
           "type": "float"
-        },        
+        },
         "site_id": {
+          "type": "int"
+        },
+        "user_id": {
+          "type": "int"
+        },
+        "company_id": {
+          "type": "int"
+        },
+        "external_id": {
+          "type": "varchar"
+        },
+        "details_comments": {
+          "type": "varchar"
+        },
+        "pms_rental_state": {
+          "type": "varchar"
+        },
+        "is_exit": {
           "type": "int"
         }
       },
@@ -89,7 +105,13 @@
           "allowed_values": [
             "available",
             "inuse",
-            "repo"
+            "overlock",
+            "testing",
+            "gatelock",
+            "auction-smartentry",
+            "repo",
+            "prelet",
+            "checkout"
           ],
           "enum_map": {
             "available": [
@@ -101,26 +123,88 @@
             ],
             "inuse": [
               "inuse",
-              "overlock",
-              "testing",
-              "gatelock",
-              "auction-smartentry",
+              "in use",
               "occupied",
               "rented",
-              "taken",
-              "active"
+              "taken"
+            ],
+            "overlock": [
+              "overlock",
+              "over-locked",
+              "overlocked",
+              "overdue",
+              "past due",
+              "delinquent"
+            ],
+            "testing": [
+              "testing",
+              "test",
+              "in testing",
+              "under test",
+              "maintenance test"
+            ],
+            "gatelock": [
+              "gatelock",
+              "gate lock",
+              "gate locked",
+              "gate-lock"
+            ],
+            "auction-smartentry": [
+              "auction-smartentry",
+              "auction smartentry",
+              "smartentry auction"
             ],
             "repo": [
               "repo",
-              "auction"
+              "repossessed",
+              "repossession"
+            ],
+            "prelet": [
+              "prelet",
+              "pre-let",
+              "pre let",
+              "reserved",
+              "reservation",
+              "pre-rented"
+            ],
+            "checkout": [
+              "checkout",
+              "check out",
+              "checking out",
+              "move out",
+              "vacating",
+              "vacated"
             ]
           }
+        },
+        "access_type": {
+          "aliases": ["access", "access type", "type", "unit type", "storage type"],
+          "allowed_values": [
+            "rentable",
+            "zone_trigger",
+            "site",
+            "service",
+            "employee",
+            "padlock"
+          ],
+          "enum_map": {
+            "rentable": ["rentable", "standard", "regular", "normal", "rent"],
+            "zone_trigger": ["zone_trigger", "zone trigger", "zone", "trigger", "gate trigger", "automated gate"],
+            "site": ["site unit", "admin unit", "facility unit", "site access"],
+            "service": ["service unit", "maintenance unit", "service space", "utility unit"],
+            "employee": ["employee unit", "employee storage", "employee space", "staff unit"],
+            "padlock": ["padlock", "pad lock", "hasp", "padlock unit"]
+          }
+        },
+        "pms_rental_state": {
+          "aliases": ["pms state", "pms status", "property management state", "pms"]
         }
       },
+      "groupable_dimensions": ["rental_state", "access_type", "pms_rental_state", "company_id"],
       "relationships": {
         "site": "v2_units.site_id = sites.id",
         "lock": "v2_locks_to_units.unit_id = v2_units.id",
-        "user": "users_units_parameters.unit_id = v2_units.id"
+        "user": "v2_units.user_id = users.id"
       }
     },
     "user": {
@@ -150,14 +234,41 @@
         "email": {
           "type": "varchar"
         },
+        "phone": {
+          "type": "varchar"
+        },
         "type": {
           "type": "varchar"
         },
         "state": {
           "type": "varchar"
         },
+        "login_type": {
+          "type": "varchar"
+        },
+        "company_id": {
+          "type": "int"
+        },
+        "default_site_id": {
+          "type": "int"
+        },
+        "country_code": {
+          "type": "varchar"
+        },
+        "time_zone": {
+          "type": "varchar"
+        },
+        "last_login_date": {
+          "type": "timestamp"
+        },
         "created_date": {
           "type": "timestamp"
+        },
+        "on_site": {
+          "type": "int"
+        },
+        "use_2_factor_auth": {
+          "type": "int"
         }
       },
       "allowed_aggregations": {
@@ -171,28 +282,144 @@
           "aliases": [
             "user status",
             "account state",
-            "account status",
-            "active"
+            "account status"
           ],
           "allowed_values": [
             "active",
-            "inactive"
+            "inactive",
+            "new_user"
           ],
           "enum_map": {
             "active": [
               "active",
               "verified",
-              "logged_in"
+              "logged_in",
+              "enabled"
             ],
             "inactive": [
               "inactive",
               "suspended",
               "frozen",
-              "banned"
+              "banned",
+              "disabled"
+            ],
+            "new_user": [
+              "new_user",
+              "new",
+              "unverified",
+              "pending",
+              "registered"
+            ]
+          }
+        },
+        "type": {
+          "aliases": [
+            "user type",
+            "user role",
+            "account type",
+            "role"
+          ],
+          "allowed_values": [
+            "company_manager",
+            "client",
+            "site_manager",
+            "noke_admin",
+            "inactive",
+            "employee",
+            "manual",
+            "technician",
+            "user"
+          ],
+          "enum_map": {
+            "company_manager": [
+              "company_manager",
+              "company manager",
+              "company admin",
+              "corporate manager"
+            ],
+            "client": [
+              "client",
+              "customer",
+              "tenant",
+              "renter",
+              "lessee"
+            ],
+            "site_manager": [
+              "site_manager",
+              "site manager",
+              "site admin",
+              "facility manager"
+            ],
+            "noke_admin": [
+              "noke_admin",
+              "noke admin",
+              "admin",
+              "noke administrator",
+              "superadmin"
+            ],
+            "inactive": [
+              "inactive user",
+              "deactivated user"
+            ],
+            "employee": [
+              "employee",
+              "staff",
+              "worker",
+              "staff member"
+            ],
+            "manual": [
+              "manual",
+              "manual entry",
+              "manual user"
+            ],
+            "technician": [
+              "technician",
+              "tech",
+              "field technician"
+            ],
+            "user": [
+              "standard user",
+              "basic user",
+              "regular user",
+              "default user"
+            ]
+          }
+        },
+        "login_type": {
+          "aliases": [
+            "login method",
+            "auth type",
+            "authentication type",
+            "sign in method"
+          ],
+          "allowed_values": [
+            "noke",
+            "aws",
+            "okta"
+          ],
+          "enum_map": {
+            "noke": [
+              "noke",
+              "noke app",
+              "noke login",
+              "noke auth"
+            ],
+            "aws": [
+              "aws",
+              "amazon",
+              "aws cognito",
+              "cognito"
+            ],
+            "okta": [
+              "okta",
+              "okta sso",
+              "sso",
+              "single sign-on"
             ]
           }
         }
       },
+      "groupable_dimensions": ["state", "type", "login_type", "country_code"],
       "relationships": {
         "site": "users_roles.user_id = users.id",
         "unit": "users_units_parameters.user_id = users.id"
@@ -235,75 +462,127 @@
         "locks",
         "hardware",
         "smart lock",
-        "padlock",
-        "padlocks"
+        "smart locks",
+        "noke lock",
+        "noke device",
+        "device",
+        "devices"
       ],
       "allowed_columns": {
-        "id": {
-          "type": "int"
-        },
-        "name": {
-          "type": "varchar"
-        },
-        "ble_hw_version": {
-          "type": "varchar"
+        "id": { "type": "int" },
+        "name": { "type": "varchar" },
+        "mac": { "type": "varchar" },
+        "shortmac": { "type": "varchar" },
+        "serial_number": { "type": "varchar" },
+        "hw_type": { "type": "varchar" },
+        "hw_state": { "type": "varchar" },
+        "ble_hw_version": { "type": "varchar" },
+        "site_id": { "type": "int" },
+        "voltage_battery": { "type": "float" },
+        "voltage_wired": { "type": "float" },
+        "battery_state": { "type": "varchar" },
+        "temperature": { "type": "float" },
+        "alarms_on": { "type": "int" },
+        "is_overlock": { "type": "int" },
+        "free_access": { "type": "int" },
+        "install_location": { "type": "varchar" },
+        "install_status": { "type": "varchar" },
+        "sync_flag": { "type": "varchar" },
+        "protocol": { "type": "varchar" },
+        "last_seen": { "type": "timestamp" }
+      },
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
         }
       },
+      "groupable_dimensions": ["hw_type", "hw_state", "ble_hw_version", "battery_state", "sync_flag"],
       "relationships": {
         "unit": "v2_locks_to_units.lock_id = v2_locks.id"
       },
       "column_metadata": {
-        "ble_hw_version": {
-          "aliases": [
-            "version",
-            "hardware type",
-            "lock model",
-            "hardware version",
-            "model"
-          ],
-          "allowed_values": [
-            "noke volt",
-            "noke one",
-            "noke contact",
-            "noke screen",
-            "noke ion",
-            "noke pad"
-          ],
+        "hw_type": {
+          "aliases": ["lock type", "hardware type", "device type", "type of lock", "lock category"],
+          "allowed_values": ["unit", "gate", "exitgate", "repeater", "door", "slidingdoor", "elevator", "padlock", "alarm"],
           "enum_map": {
-            "noke volt": [
-              "3e",
-              "2e",
-              "1w",
-              "noke volt",
-              "volt"
-            ],
-            "noke one": [
-              "1a",
-              "noke one",
-              "one"
-            ],
-            "noke contact": [
-              "2a",
-              "noke contact",
-              "contact"
-            ],
-            "noke screen": [
-              "4k",
-              "noke screen",
-              "screen"
-            ],
-            "noke ion": [
-              "4e",
-              "noke ion",
-              "ion"
-            ],
-            "noke pad": [
-              "3k",
-              "noke pad",
-              "padlock",
-              "pad"
-            ]
+            "unit": ["unit lock", "storage lock", "unit hardware"],
+            "gate": ["gate", "gate lock", "entrance gate", "entry gate", "access gate"],
+            "exitgate": ["exit gate", "exitgate", "exit only gate", "outbound gate"],
+            "repeater": ["repeater", "range extender", "signal repeater", "mesh repeater"],
+            "door": ["door", "door lock", "door type", "door hardware"],
+            "slidingdoor": ["sliding door", "slidingdoor", "slider door"],
+            "elevator": ["elevator", "lift", "elevator lock", "lift lock"],
+            "padlock": ["padlock hardware", "pad lock hardware", "hasp hardware"],
+            "alarm": ["alarm", "alarm lock", "alarm unit", "alarm hardware"]
           }
+        },
+        "hw_state": {
+          "aliases": ["lock state", "lock status", "hardware state", "door state", "open close status"],
+          "allowed_values": ["LOCKED", "UNLOCKED", "UGLY", "offline", "OPEN", "HOLDOPEN"],
+          "enum_map": {
+            "LOCKED": ["locked", "closed", "close", "secured", "shut"],
+            "UNLOCKED": ["unlocked", "unsecured"],
+            "UGLY": ["ugly", "fault", "error state", "bad state", "malfunctioning"],
+            "offline": ["offline", "disconnected", "unreachable", "no signal", "not connected"],
+            "OPEN": ["open", "opened", "door open", "physically open"],
+            "HOLDOPEN": ["hold open", "holdopen", "propped open", "held open", "held"]
+          }
+        },
+        "ble_hw_version": {
+          "aliases": ["version", "hardware version", "lock model", "model", "ble version", "hw version"],
+          "allowed_values": ["1A", "1W", "2A", "2E", "2G", "2P", "3E", "3K", "4E", "4I", "4K", "5E", "MM", "_B", "_G", "3A", "3P"],
+          "enum_map": {
+            "1A": ["1a", "noke one", "one"],
+            "1W": ["1w", "noke one wired"],
+            "2A": ["2a", "noke contact", "contact"],
+            "2E": ["2e"],
+            "2G": ["2g"],
+            "2P": ["2p"],
+            "3E": ["3e", "noke volt", "volt"],
+            "3A": ["3a"],
+            "3P": ["3p"],
+            "3K": ["3k", "noke pad", "pad"],
+            "4E": ["4e", "noke ion", "ion"],
+            "4I": ["4i"],
+            "4K": ["4k", "noke screen", "screen"],
+            "5E": ["5e"],
+            "MM": ["mm"],
+            "_B": ["_b"],
+            "_G": ["_g"]
+          }
+        },
+        "voltage_battery": {
+          "aliases": ["battery", "battery level", "battery voltage", "battery status", "battery charge", "power level", "battery %"]
+        },
+        "voltage_wired": {
+          "aliases": ["wired power", "wired voltage", "ac power", "mains power"]
+        },
+        "battery_state": {
+          "aliases": ["battery health", "battery condition", "battery indicator", "power state"]
+        },
+        "sync_flag": {
+          "aliases": ["sync status", "setup status", "sync state", "provisioning state"],
+          "allowed_values": ["rekey", "setup"],
+          "enum_map": {
+            "rekey": ["rekey", "re-key", "rekeyed", "re keyed"],
+            "setup": ["setup", "set up", "in setup", "setting up", "installing"]
+          }
+        },
+        "free_access": {
+          "aliases": ["free access", "always unlocked", "open access", "no key required", "public access"]
+        },
+        "is_overlock": {
+          "aliases": ["overlock", "overlocked", "lock overlock", "hardware overlock", "lock delinquent"]
+        },
+        "temperature": {
+          "aliases": ["temp", "temperature", "device temperature", "lock temperature", "heat"]
+        },
+        "install_location": {
+          "aliases": ["install location", "installation location", "mounted at", "installed at", "position"]
+        },
+        "install_status": {
+          "aliases": ["install status", "installation status", "installation complete", "provisioned"]
         }
       }
     },
@@ -465,21 +744,11 @@
         }
       },
       "relationships": {
-          "site": "site_hours.site_id = sites.id"
+        "site": "site_hours.site_id = sites.id"
       }
     }
   },
   "junction_bridges": {
-    "unit.user": {
-      "via_table": "users_roles",
-      "step_1": "users_roles.site_id = v2_units.site_id",
-      "step_2": "users_roles.user_id = users.id"
-    },
-    "user.unit": {
-      "via_table": "users_roles",
-      "step_1": "users_roles.user_id = users.id",
-      "step_2": "users_roles.site_id = v2_units.site_id"
-    },
     "user.site": {
       "via_table": "users_roles",
       "step_1": "users_roles.user_id = users.id",
@@ -524,6 +793,7 @@
   "safety": {
     "max_join_depth": 3,
     "max_limit_ceiling": 50,
+    "having_operators": [">", "<", ">=", "<=", "=", "!="],
     "allowed_operators": [
       "=",
       "IN",
