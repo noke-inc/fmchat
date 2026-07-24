@@ -3,7 +3,7 @@ from itertools import count
 import json
 import os
 import re
-from db import execute_query
+from db import execute_query, execute_activity_query
 
 SCHEMA_CATALOG = {}
 
@@ -19,7 +19,7 @@ import re
 import sys
 import json
 
-def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: dict, semantic_filters: list = None, aggregation_column: str = None, search_keyword: str = None, group_by_columns: list = None, having_conditions: list = None, order_by: dict = None) -> list[dict]:
+def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: dict, semantic_filters: list = None, aggregation_column: str = None, search_keyword: str = None, group_by_columns: list = None, having_conditions: list = None, order_by: dict = None, limit: int = None) -> list[dict]:
     if not subjects:
         raise ValueError("Critical Fault: target_subjects list parameter cannot be empty.")
         
@@ -34,19 +34,30 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
     # =============================================================================
     # ─── 1. DETERMINISTIC DYNAMIC FACT TABLE DENSITY MATRIX SELECTION ───
     # =============================================================================
-    # We calculate which active concept holds the highest density of directional connection pathways.
-    # That table mathematically wins and is crowned our master driving Fact Table anchor t0! [🔒]
+    # Rule: the FIRST entity in subjects_ordered is the user's primary intent.
+    # If it has allowed_columns (i.e. it's a real data table), always use it as root.
+    # Fall back to relationship-density only when the primary subject has no columns
+    # (e.g. a role/junction entity that can't anchor a query on its own).
     root_entity = None
     max_relationship_density = -1
-    
-    for candidate in target_entities:
-        relationship_count = len(SCHEMA_CATALOG["entities"].get(candidate, {}).get("relationships", {}))
-        if relationship_count > max_relationship_density:
-            max_relationship_density = relationship_count
-            root_entity = candidate
-            
+
+    # Prefer first-mentioned subject as root (reflects user intent)
+    primary_subject = subjects_ordered[0] if subjects_ordered else None
+    if (
+        primary_subject
+        and primary_subject in SCHEMA_CATALOG["entities"]
+        and SCHEMA_CATALOG["entities"][primary_subject].get("allowed_columns")
+    ):
+        root_entity = primary_subject
+    else:
+        for candidate in target_entities:
+            relationship_count = len(SCHEMA_CATALOG["entities"].get(candidate, {}).get("relationships", {}))
+            if relationship_count > max_relationship_density:
+                max_relationship_density = relationship_count
+                root_entity = candidate
+
     if not root_entity:
-        root_entity = list(target_entities)[0] # Safety boundary fallback
+        root_entity = list(target_entities)[0]  # Safety boundary fallback
         
     entity_meta = SCHEMA_CATALOG["entities"][root_entity]
     root_table = entity_meta["physical_table"]
@@ -196,7 +207,7 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             if col not in deny_cols and col not in ["site_id", "user_id"]:
                 select_fields.append(f"t0.{col}")
         
-        # Joined entities: only id + name (not all 18 site_hours columns!)
+        # Joined entities: only select id and name from joined tables
         for entity_name, assigned_alias in alias_map.items():
             if entity_name != root_entity:
                 child_meta = SCHEMA_CATALOG["entities"][entity_name]
@@ -205,6 +216,11 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
                 for col in ["id", "first_name", "last_name", "email", "name"]:
                     if col in child_cols and col not in deny_cols:
                         select_fields.append(f"{assigned_alias}.{col} AS {entity_name}_{col}")
+                # For lock entity: also include voltage_battery, battery_state (for battery queries)
+                if entity_name == "lock":
+                    for bat_col in ["voltage_battery", "voltage_wired", "battery_state"]:
+                        if bat_col in child_cols and bat_col not in deny_cols:
+                            select_fields.append(f"{assigned_alias}.{bat_col} AS lock_{bat_col}")
 
     # =============================================================================
     # ─── 5. MULTI-TENANT SESSION CONTEXT GUARD RAIL FILTERS ───
@@ -224,14 +240,27 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             
         if session_value is None or session_value == "" or session_value == [] or session_value == ():
             continue
-            
+
+        # ── Entity-level site_scope_column / company_scope_column override ─────
+        # Some entities use a non-standard column for site/company scoping.
+        # e.g. events use site_id_gen; companies use id (not company_id).
         target_column_name = session_key
+        if session_key == "site_id":
+            site_scope_col = entity_meta.get("site_scope_column")
+            if site_scope_col and site_scope_col != "site_id":
+                target_column_name = site_scope_col
+        elif session_key == "company_id":
+            company_scope_col = entity_meta.get("company_scope_column")
+            if company_scope_col and company_scope_col != "company_id":
+                target_column_name = company_scope_col
+
         resolved_column_alias = None
         if target_column_name in allowed_cols_dict:
             # v2_units.company_id and v2_locks.company_id both default to 0 in the DB —
             # not a reliable security boundary. site_id already scopes both tables.
-            # For company_id on unit/lock root, fall through to check joined entities instead.
-            if not (session_key == "company_id" and root_entity in ("unit", "lock")):
+            # For company_id on unit/lock/user root, fall through to check joined entities instead.
+            # For user entity, company_id across all sites is wrong — skip it (site scoping via users_roles handles it).
+            if not (session_key == "company_id" and root_entity in ("unit", "lock", "user")):
                 resolved_column_alias = "t0"
 
         if resolved_column_alias is None:
@@ -256,6 +285,28 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
                 clause_snippet = f"{resolved_column_alias}.{target_column_name} = %({param_token_name})s"
                 query_params[param_token_name] = session_value
             security_group_filters.append(clause_snippet)
+
+    # ── Special case: scope users by site via users_roles junction table ─────
+    # The users table has no direct site_id column. Inject an INNER JOIN on
+    # users_roles to restrict results to the session's authorised site_ids.
+    # This ensures "how many tenants" uses site_id, not company_id.
+    _user_site_ids = session_context.get("site_id")
+    if (
+        entity_meta.get("physical_table") == "users"
+        and root_entity == "user"
+        and _user_site_ids
+        and isinstance(_user_site_ids, (list, tuple))
+        and len(_user_site_ids) > 0
+        and not entity_meta.get("site_scope_column")  # only if no custom scope col
+    ):
+        _ur_ph = ", ".join([f"%(_ur_site_{_i})s" for _i in range(len(_user_site_ids))])
+        join_clauses.append(
+            f"INNER JOIN users_roles ur_scope ON ur_scope.user_id = t0.id "
+            f"AND ur_scope.site_id IN ({_ur_ph})"
+        )
+        for _i, _sid in enumerate(_user_site_ids):
+            query_params[f"_ur_site_{_i}"] = _sid
+
     if security_group_filters:
         where_clauses.append(" AND ".join(security_group_filters))
     else:
@@ -487,7 +538,8 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
 
     if not _effective_group_by:
         limit_cap = SCHEMA_CATALOG["safety"]["max_limit_ceiling"]
-        sql_parts.append(f"LIMIT {limit_cap}")
+        effective_limit = min(int(limit), limit_cap) if limit and int(limit) > 0 else limit_cap
+        sql_parts.append(f"LIMIT {effective_limit}")
 
     final_sql = " ".join(sql_parts) + ";"
 
@@ -504,6 +556,10 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         LAST_COMPILED_SQL = final_sql % formatted_params
     except Exception:
         pass
+    # Route to the correct database based on the entity's db_source property.
+    db_source = entity_meta.get("db_source", "smartentry-main")
+    if db_source == "smartentry-activity":
+        return execute_activity_query(final_sql, query_params)
     return execute_query(final_sql, query_params)
 
 # --- LOCAL DYNAMIC TESTING HARNESS ---

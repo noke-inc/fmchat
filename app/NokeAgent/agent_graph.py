@@ -46,6 +46,107 @@ HELP_CENTER_LINK = "\n\nNeed assistance? Visit our [Help Center](https://www.jan
 TOOL_EXECUTION_ERROR_RESPONSE = "Unable to retrieve that information right now. Please try again." + HELP_CENTER_LINK
 ORCHESTRATOR_TOOLUSE_ERROR_RESPONSE = "Unable to process your request because it does not meet the required input criteria. Please review your request and try again with more specific or relevant information."
 
+# Patterns in synthesis output that indicate Bedrock content filtering.
+_CONTENT_FILTER_PATTERNS = (
+    "blocked by our content filters",
+    "content filters",
+    "i can't assist",
+    "i cannot assist",
+    "i'm unable to",
+    "unable to provide",
+    "policy violation",
+)
+
+
+def _sanitize_for_synthesis(data: list) -> list:
+    """
+    Remove fields that can trigger Bedrock content filters (MAC addresses, raw hex IDs)
+    before passing data to the synthesis LLM.
+    """
+    import re
+    _mac_re = re.compile(r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$')
+    _sensitive_keys = {"mac", "shortmac", "mac_address"}
+
+    sanitized = []
+    for row in data:
+        if not isinstance(row, dict):
+            sanitized.append(row)
+            continue
+        clean = {}
+        for k, v in row.items():
+            if k in _sensitive_keys:
+                continue
+            # Drop values that look like bare MAC addresses
+            if isinstance(v, str) and _mac_re.match(v.strip()):
+                continue
+            clean[k] = v
+        sanitized.append(clean)
+    return sanitized
+
+
+def _build_followup_question(user_query: str) -> str:
+    """
+    Generate a contextual follow-up question when no data is found.
+    Driven by keywords in the user's query — no hardcoded table/column names.
+    """
+    q = user_query.lower().strip()
+    followup_parts = []
+
+    # Ask for clarification about the person/name being searched
+    import re as _re
+    name_candidates = _re.findall(r'\b[A-Z][a-z]{1,}\b|\b[A-Za-z0-9]+\b', user_query)
+    # Filter out common English stop words and schema keywords
+    schema_stop = {
+        "which", "what", "how", "many", "show", "list", "get", "find", "tell",
+        "me", "the", "all", "is", "are", "was", "were", "unit", "units", "lock",
+        "locks", "user", "users", "tenant", "tenants", "site", "gateway", "event",
+        "events", "company", "for", "by", "with", "from", "in", "at", "of", "a",
+        "an", "and", "or", "not", "to", "on", "this", "that", "their", "its",
+        "rented", "occupied", "available", "active", "offline", "online"
+    }
+    candidate_names = [w for w in name_candidates if w.lower() not in schema_stop and len(w) > 1]
+
+    if candidate_names:
+        name_hint = candidate_names[0]
+        followup_parts.append(
+            f"Could you confirm the exact name, email, or ID for \"{name_hint}\"? "
+            "For example, is it a first name, last name, or username? "
+            "Tip: include 'tenant', 'user', or 'client' in your question to search by person — "
+            "for example: 'which unit is rented by tenant employee2'."
+        )
+
+    if any(w in q for w in ("rent", "rented", "leasing", "lease")):
+        followup_parts.append(
+            "Are you looking for the unit currently rented (occupied) by this person, "
+            "or a historical rental record?"
+        )
+
+    if any(w in q for w in ("battery", "charge", "voltage", "power")):
+        followup_parts.append(
+            "Would you like the battery voltage level, the battery health status (e.g. good/low), "
+            "or both for all locks at this site?"
+        )
+
+    if any(w in q for w in ("gateway", "gateways", "access point", "entry", "entries")):
+        followup_parts.append(
+            "Are you asking about the online/offline status of gateways, "
+            "or would you like more details such as IP address or firmware version?"
+        )
+
+    if any(w in q for w in ("event", "activity", "history", "log", "access")):
+        followup_parts.append(
+            "Could you specify a time range or a specific user/unit you want the activity for?"
+        )
+
+    if followup_parts:
+        base = "I couldn't find matching records. " + " ".join(followup_parts)
+    else:
+        base = (
+            "No matching records were found. "
+            "Could you provide more details — such as the exact name, ID, or status you are looking for?"
+        )
+    return base
+
 
 # =============================================================================
 # 2. SHARED CONVERSATIONAL GRAPH STATE MATRIX
@@ -142,6 +243,7 @@ def call_bedrock_orchestrator(state: AgentState):
     # ─── EXTRACTION STEP A: LOCAL DUAL-LAYER METADATA DISCOVERY ─── [CP6]
     # =============================================================================
     discovered_entities = []
+    directly_matched_entities = []   # entities found via direct alias (Track 1)
     pruned_columns_vocabulary = []
     system_isolation_keys = list(state.keys())
     if "messages" in system_isolation_keys:
@@ -153,6 +255,7 @@ def call_bedrock_orchestrator(state: AgentState):
     # Loop over every table entity registered inside your loaded schema JSON
     for entity_name, entity_meta in active_catalog.get("entities", {}).items():
         is_entity_active = False
+        is_direct_match = False
         
         # Track 1: Sweep Top-Level Table Aliases
         table_aliases_pool = entity_meta.get("aliases", []) + [entity_name]
@@ -161,6 +264,7 @@ def call_bedrock_orchestrator(state: AgentState):
             escaped_alias = re.escape(alias)
             if re.search(rf'\b{escaped_alias}\b', clean_prompt_normalized):
                 is_entity_active = True
+                is_direct_match = True
                 break
                 
         # Track 2: GLOBAL SWEEP - Scan inside column metadata and synonyms arrays [CP6]
@@ -189,6 +293,8 @@ def call_bedrock_orchestrator(state: AgentState):
         if is_entity_active:
             if entity_name not in discovered_entities:
                 discovered_entities.append(entity_name)
+            if is_direct_match and entity_name not in directly_matched_entities:
+                directly_matched_entities.append(entity_name)
             for identity_col in ["id", "name"]:
                 if identity_col in allowed_cols_dict:
                     identity_str = f"  - Field: Table/Concept '{entity_name}' property column: '{identity_col}' (Type: {allowed_cols_dict[identity_col].get('type')})"
@@ -198,6 +304,46 @@ def call_bedrock_orchestrator(state: AgentState):
                 if active_field_str not in pruned_columns_vocabulary:
                     pruned_columns_vocabulary.append(active_field_str)
 
+    # ─── Entity conflict resolution ───────────────────────────────────────────
+    # If some entities were matched via direct alias (Track 1) and others only
+    # via indirect column-metadata matches (Track 2), remove the indirect-only
+    # entities UNLESS they are a necessary join partner for a direct entity.
+    if directly_matched_entities and len(discovered_entities) > len(directly_matched_entities):
+        junction_bridges = active_catalog.get("junction_bridges", {})
+        filtered = list(directly_matched_entities)
+        for indirect_ent in discovered_entities:
+            if indirect_ent in directly_matched_entities:
+                continue
+            needed = False
+            for direct_ent in directly_matched_entities:
+                # Keep if there is a junction bridge or direct relationship between them
+                if f"{direct_ent}.{indirect_ent}" in junction_bridges:
+                    needed = True
+                    break
+                if indirect_ent in active_catalog["entities"].get(direct_ent, {}).get("relationships", {}):
+                    needed = True
+                    break
+                if direct_ent in active_catalog["entities"].get(indirect_ent, {}).get("relationships", {}):
+                    needed = True
+                    break
+            if needed:
+                filtered.append(indirect_ent)
+        discovered_entities = filtered
+
+    # ─── "rented by / occupied by [name]" → ensure user entity is included ───
+    # When a query references a person by name without using an entity alias,
+    # the user entity may not be discovered. Detect these patterns explicitly.
+    _by_patterns = [
+        r'\brented\s+by\b', r'\boccupied\s+by\b', r'\bassigned\s+to\b',
+        r'\bbelongs\s+to\b', r'\bfor\s+user\b', r'\bby\s+user\b',
+        r'\bby\s+tenant\b', r'\bby\s+client\b', r'\bby\s+employee\b',
+    ]
+    if any(re.search(pat, clean_prompt_normalized) for pat in _by_patterns):
+        if "user" not in discovered_entities:
+            discovered_entities.append("user")
+        if "unit" not in discovered_entities:
+            discovered_entities.append("unit")
+
     # =============================================================================
     # ─── EXTRACTION STEP B: OUT-OF-SCOPE DOMAIN PROTECTION GUARD RAIL ─── [🔒]
     # =============================================================================
@@ -206,16 +352,19 @@ def call_bedrock_orchestrator(state: AgentState):
         print("Prompt maps to zero database entities. Terminating query loop safely.", file=sys.stderr)
         print("─"*100 + "\n", file=sys.stderr)
         
-        refusal_response = "I'm sorry, that information is not available."
+        refusal_response = "I'm sorry, that information is not available. Can you provide more details " \
+        "or clarify your request? " + HELP_CENTER_LINK
         return {"messages": [AIMessage(content=refusal_response)]}
 
-    # Mathematically compute driver Fact Table densities
-    fact_table_entity = discovered_entities if discovered_entities else "unresolved"
-    max_relationship_density = -1
-    for candidate in discovered_entities:
-        relationship_count = len(active_catalog["entities"].get(candidate, {}).get("relationships", {}))
-        if relationship_count > max_relationship_density:
-            max_relationship_density = relationship_count
+    # Compute primary fact-table entity — prefer directly-matched entities
+    if directly_matched_entities:
+        fact_table_entity = directly_matched_entities[0]
+    else:
+        fact_table_entity = discovered_entities[0] if discovered_entities else "unresolved"
+    # Override if a directly-matched entity has more specific column coverage
+    for candidate in directly_matched_entities:
+        if len(active_catalog["entities"].get(candidate, {}).get("allowed_columns", {})) > \
+           len(active_catalog["entities"].get(fact_table_entity, {}).get("allowed_columns", {})):
             fact_table_entity = candidate
             
     vocabulary_text_block = "\n".join(pruned_columns_vocabulary)
@@ -299,7 +448,11 @@ def call_bedrock_orchestrator(state: AgentState):
                 },
                 "order_by": {
                     "type": "object",
-                    "description": "Sort results. Format: {'column':'count','direction':'DESC'}. Use for 'top', 'most', 'least', 'highest', 'lowest', 'sort by'."
+                    "description": "Sort results. Format: {'column':'count','direction':'DESC'}. Use for 'top', 'most', 'least', 'highest', 'lowest', 'sort by', 'last N', 'recent'."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of records to return (1–50). Use when user says 'last N', 'top N', 'show me N', 'recent N'. Example: 'last 5 activities' → limit: 5."
                 }
             },
             "required": ["intent_type", "target_subjects"]
@@ -370,10 +523,35 @@ def call_bedrock_orchestrator(state: AgentState):
         "Use ONLY: intent_type='DATA_AGGREGATION', semantic_filters=['count'], group_by_columns=['rental_state']. "
         "This returns counts for ALL states so the synthesis can compute (target_state / total) x 100. "
         "EXAMPLE: 'percentage of open units' → semantic_filters: ['count'], group_by_columns: ['rental_state'] — NOT ['count','open'].\n"
-        "11. When a question describes a LOCK state (open, locked, unlocked, offline, hold open), the 'lock' entity MUST appear first in target_subjects. "
-        "Example: 'how many locks are open' \u2192 target_subjects: 'lock, unit, user' (lock first).\n"
-        "12. If the user asks for both a count AND individual details in the same question (e.g. 'how many X and their Y information'), "
-        "use intent_type: DATA_RETRIEVAL so full records are returned. The synthesis will count and describe them together."
+        "11. When a question describes a LOCK hardware state (open, locked, unlocked, hold open), the 'lock' entity MUST appear first in target_subjects. "
+        "Example: 'how many locks are open' → target_subjects: 'lock' (lock only or lock first).\n"
+        "When a question asks about BATTERY status, voltage, or power level of a lock/device, the 'lock' entity MUST appear first and ALONE. "
+        "Example: 'battery status of Fake 3A' → target_subjects: 'lock', intent_type: 'DATA_RETRIEVAL'. NEVER aggregate battery queries.\n"
+        "When a question asks about GATEWAYS (online/offline, connectivity, access points, access controllers), use ONLY the 'gateway' entity. "
+        "Do NOT include 'lock' or 'unit' in target_subjects for gateway questions. "
+        "Gate and exitgate type locks are known as 'entries', not 'gateways' — use 'gateway' entity for physical gateway devices.\n"
+        "When a question asks about ACCESS EVENTS, ACTIVITY, HISTORY, or LOGS, use the 'event' entity.\n"
+        "12. For 'show me the last N', 'recent N', 'latest N' requests (e.g. 'last 5 activities', 'recent 10 events'): "
+        "use intent_type='DATA_RETRIEVAL', order_by={'column':'created_at','direction':'DESC'}, and do NOT add 'count' to semantic_filters. "
+        "The number N is the desired result count — pass it as limit (default 50 if not specified). "
+        "NEVER use DATA_AGGREGATION for 'show me', 'list', 'display', 'what are the', 'what is the', 'all available', or 'last N' requests. "
+        "These always require full records — use DATA_RETRIEVAL. Only use DATA_AGGREGATION when the user explicitly says 'how many', 'count', or 'total'.\n"
+        "13. When a question asks 'rented by X', 'occupied by X', 'assigned to X', or 'belongs to X' — "
+        "always include the 'user' entity in target_subjects so user information is searched. "
+        "Put 'user' or the subject entity first. Example: 'which unit is rented by employee2' → "
+        "target_subjects: 'unit, user', search_keyword: 'employee2', semantic_filters: ['rented'].\n"
+        "14. 'People', 'person', 'client', 'clients', 'residents', 'members' all refer to the 'user' entity. "
+        "Example: 'how many people are onsite' → target_subjects: 'user', intent_type: 'DATA_AGGREGATION', semantic_filters: ['count'].\n"
+        "15. If the user asks for both a count AND individual details in the same question (e.g. 'how many X and their Y information'), "
+        "use intent_type: DATA_RETRIEVAL so full records are returned. The synthesis will count and describe them together.\n"
+        "16. When a question asks about ZONES or AREAS (which zone a unit belongs to, units in a zone, how many zones), "
+        "use the 'zone' entity, optionally joined with 'unit'. Example: 'what zone does unit 123 belong to' → target_subjects: 'unit, zone', search_keyword: '123'.\n"
+        "When a question asks about UNIT HISTORY, ACTIVITY LOG, STATUS CHANGES, AUDIT LOG, MOVE-IN/MOVE-OUT events, "
+        "use the 'change_log' entity. Example: 'show me the history of unit A' → target_subjects: 'change_log', search_keyword: 'A'. "
+        "For duration questions (how many days in unit), retrieve change_log records with status_change 'Moved In' and 'Moved Out' for the same unit/user — "
+        "the synthesis will calculate the time difference.\n"
+        "17. When a question asks about the COMPANY name, details, or information (e.g. 'what is the company name', 'show company info'), "
+        "use intent_type: DATA_RETRIEVAL with target_subjects: 'company'. NEVER use DATA_AGGREGATION for single-record lookup questions."
     )
     
     # print("\n📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
@@ -655,7 +833,8 @@ def execute_graph_tools(state: AgentState):
                     search_keyword=clean_search,
                     group_by_columns=tc_args.get("group_by_columns") or [],
                     having_conditions=tc_args.get("having_conditions") or [],
-                    order_by=tc_args.get("order_by") or None
+                    order_by=tc_args.get("order_by") or None,
+                    limit=tc_args.get("limit") or None,
                 )
                 
                 # print("\n" + "📝" + "─"*32 + " DYNAMICALLY GENERATED SQL COMMAND " + "─"*31, file=sys.stderr)
@@ -1041,7 +1220,7 @@ def recover_no_tool_after_orchestrator(state: AgentState):
                 answer_text = f"Based on the live record database snapshot, the current count is {int(count_value)}."
             elif isinstance(db_rows_matrix, list):
                 if len(db_rows_matrix) == 0:
-                    answer_text = NO_MATCHING_RECORDS_RESPONSE
+                    answer_text = _build_followup_question(effective_query)
                 else:
                     answer_text = f"Based on the live record database snapshot, I found {len(db_rows_matrix)} matching records."
             else:
@@ -1123,9 +1302,10 @@ def generate_conversational_response(state: AgentState):
                     tool_status = str(raw_data.get("tool_status", "")).strip().lower()
                     if tool_status == "success_no_rows":
                         print("\n🛑" + "─"*25 + " DETERMINISTIC NO-DATA RESPONSE " + "─"*25, file=sys.stderr)
-                        print("Tool status indicates zero rows. Skipping synthesis.", file=sys.stderr)
+                        print("Tool status indicates zero rows. Returning follow-up question.", file=sys.stderr)
                         print("─"*100 + "\n", file=sys.stderr)
-                        return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
+                        followup = _build_followup_question(user_initial_prompt)
+                        return {"messages": [AIMessage(content=followup)]}
 
                     if tool_status == "error":
                         print("\n🛑" + "─"*24 + " DETERMINISTIC TOOL ERROR RESPONSE " + "─"*24, file=sys.stderr)
@@ -1135,9 +1315,11 @@ def generate_conversational_response(state: AgentState):
 
                     payload_data = raw_data.get("data")
                     if isinstance(payload_data, list) and len(payload_data) > 0:
+                        payload_data = _sanitize_for_synthesis(payload_data)
                         database_records_text = json.dumps(payload_data, default=str)
                     elif isinstance(payload_data, list) and len(payload_data) == 0:
-                        return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
+                        followup = _build_followup_question(user_initial_prompt)
+                        return {"messages": [AIMessage(content=followup)]}
                     elif isinstance(payload_data, dict):
                         # For mutation success: strip internal IDs/technical fields before synthesis
                         if payload_data.get("status") == "Success":
@@ -1155,9 +1337,11 @@ def generate_conversational_response(state: AgentState):
 
                 elif isinstance(raw_data, list) and len(raw_data) > 0:
                     # Backward compatibility for legacy non-envelope tool payloads.
+                    raw_data = _sanitize_for_synthesis(raw_data)
                     database_records_text = json.dumps(raw_data, default=str)
                 elif isinstance(raw_data, list) and len(raw_data) == 0:
-                    return {"messages": [AIMessage(content=NO_MATCHING_RECORDS_RESPONSE)]}
+                    followup = _build_followup_question(user_initial_prompt)
+                    return {"messages": [AIMessage(content=followup)]}
                 elif isinstance(raw_data, dict) and "error" in raw_data:
                     return {"messages": [AIMessage(content=TOOL_EXECUTION_ERROR_RESPONSE)]}
                 else:
@@ -1189,7 +1373,20 @@ def generate_conversational_response(state: AgentState):
         "6. For any percentage/rate question: if the data is a rental_state GROUP BY breakdown, "
         "sum ALL state counts for the total, identify the target state (e.g. 'available' for 'open units', 'inuse' for occupied), "
         "then compute (target_count / total) * 100. Present as: 'X of Y units are open/available (Z.Z%)'.\n"
-        "7. When the data contains multiple records AND the user asked 'how many', count the rows yourself and lead with the total before listing details. Example: 'There are 5 open locks:'.\n\n"
+        "7. When the data contains multiple records AND the user asked 'how many', count the rows yourself and lead with the total before listing details. Example: 'There are 5 open locks:'.\n"
+        "8. For battery status questions: report the voltage_battery value (volts) and battery_state (e.g. good/low/critical) for each lock. "
+        "If voltage_battery is available but battery_state is not, describe: above 3.5V = good, 3.0–3.5V = medium, below 3.0V = low.\n"
+        "9. For gateway questions: report name and status (online/offline). Gate and exitgate type locks are also known as 'entries'.\n"
+        "10. For event/activity questions: describe the event type, subtype, who triggered it, and when (created_at). "
+        "Do not show raw JSON from event_obj — instead describe it in plain language.\n"
+        "11. If the data snapshot is empty or contains no useful fields, ask a follow-up question: "
+        "'I couldn't find matching records. Could you provide more details, such as the exact name or ID you are looking for?'\n"
+        "12. NEVER claim that unit names, details, or any field values are hidden for 'privacy', 'security', or 'confidentiality' reasons. "
+        "The data shown in the query results snapshot is already authorized for display. Always show all available fields, including unit names, user names, and status values.\n"
+        "13. For zone questions: report the zone name and the units that belong to it (unit names). "
+        "For 'how many units in zone X' questions, count the unit records returned.\n"
+        "14. For change_log/unit history questions: report unit_id (as unit reference), status_change, created_date, and user reference for each record. "
+        "For duration questions (how many days), find the 'Moved In' and 'Moved Out' records for the same unit/user and compute DATEDIFF(moved_out_date, moved_in_date) days.\n\n"
         f"OPERATOR INITIAL PROMPT: '{user_initial_prompt}'\n"
         f"{compressed_rows_context}"
     )
@@ -1230,6 +1427,14 @@ def generate_conversational_response(state: AgentState):
     clean_narrative_sentence = re.sub(r'<result>.*?</result>', '', flat_text_extracted, flags=re.DOTALL)
     clean_narrative_sentence = re.sub(r'<thinking>.*?</thinking>', '', clean_narrative_sentence, flags=re.DOTALL)
     clean_narrative_sentence = clean_narrative_sentence.strip()
+
+    # Detect content-filter blocks from Bedrock and replace with a helpful follow-up question.
+    _lower_response = clean_narrative_sentence.lower()
+    if any(pat in _lower_response for pat in _CONTENT_FILTER_PATTERNS) or not clean_narrative_sentence:
+        print("\n⚠️" + "─"*27 + " CONTENT FILTER / EMPTY SYNTHESIS DETECTED " + "─"*27, file=sys.stderr)
+        print(f"Blocked response: {clean_narrative_sentence[:200]}", file=sys.stderr)
+        print("─"*100 + "\n", file=sys.stderr)
+        clean_narrative_sentence = _build_followup_question(user_initial_prompt)
     
     # Re-assign the clean plain-text string back onto the LangGraph state message payload block
     conversational_reply.content = clean_narrative_sentence

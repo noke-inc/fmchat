@@ -23,14 +23,14 @@ for _p in (_MCP_DIR, _THIS_DIR):
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(_THIS_DIR, ".env"), override=True)
 
-# ─── Hardcoded JWT (same token used in outbound_api_router.py) ────────────────
-# company=1000245  currentSite=2223399  nokeUser=1034747
-HARDCODED_JWT = (
-    "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0."
-    "eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyNDUiLCJjdXJyZW50U2l0ZSI6MjIyMzM5OSwiZGV2aWNlSWQiO"
-    "iIiLCJleHAiOjE3ODM5NjAzNjMsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwMzQ3NDcsInNlc3Npb25TYW"
-    "x0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9."
-    "NzM4NzU2ZGNmNGY2ZWQ5Y2IxNjcxOTBiNGQ2YjhiNDE2Y2M2MzhhZDhmMzBhNWNmZTg4ZTA4YmY0OWFjOTk5Mg"
+# ─── Hardcoded JWT — update this when you get a fresh portal token ────────────
+# Paste your current portal JWT here. The server extracts user_id and company
+# from it, then queries users_roles to get the full authorized site list.
+HARDCODED_JWT = os.getenv(
+    "NOKE_UI_JWT",
+    (
+        "eyJhbGciOiJOT0tFIiwidHlwIjoiSldUIn0.eyJhbGciOiJOT0tFIiwiY29tcGFueSI6IjEwMDAyNDEiLCJjdXJyZW50U2l0ZSI6MjIyMzM5MSwiZGV2aWNlSWQiOiIiLCJleHAiOjE3ODQ2NjE4MzAsImlzcyI6Im5va2UuY29tIiwibm9rZVVzZXIiOjEwNTQxMzUsInNlc3Npb25TYWx0IjoiICIsInRva2VuVHlwZSI6IndlYiJ9.NTQ1ODlkNGU5NGFjODdiYTc2Y2Q5M2IzNjJiZmI3NjI5YzY5N2M1NTJiNGNmZGViNjk3ZDZlOGI4ZjIyYmVhMA"
+    ),
 )
 
 # Make the same JWT available to OutboundAPIRouter via env var
@@ -47,19 +47,38 @@ def _decode_jwt(token: str) -> dict:
 _CLAIMS      = _decode_jwt(HARDCODED_JWT)
 JWT_USER_ID  = int(_CLAIMS.get("nokeUser", 1034747))
 JWT_COMPANY  = int(str(_CLAIMS.get("company", "1000245")))
-# Both test sites — matches mock_jwt_site_fence in agent_graph.py __main__ block
-JWT_SITES    = [2223399, 2223449]
 
 # ─── Lazy imports (after path setup) ─────────────────────────────────────────
 import data_retrieval_engine
 from agent_graph import agent_brain_app
 from langchain_core.messages import HumanMessage
+from db import execute_query  # eks/mcp_server/db.py (already on sys.path)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import uvicorn
+
+# ─── Resolve authorized sites from users_roles table (same as db_user.py) ────
+def _load_user_sites(user_id: int) -> list:
+    """Query users_roles to get all site IDs authorized for this JWT user."""
+    try:
+        rows = execute_query(
+            "SELECT site_id FROM users_roles WHERE user_id = %s",
+            (user_id,),
+        )
+        sites = [int(r["site_id"]) for r in rows if r.get("site_id") is not None]
+        if sites:
+            return sites
+    except Exception as exc:
+        print(f"⚠️  Could not load user sites from DB: {exc}", flush=True)
+    # Fallback to JWT currentSite if DB query fails
+    fallback = _CLAIMS.get("currentSite")
+    return [int(fallback)] if fallback else []
+
+JWT_SITES = _load_user_sites(JWT_USER_ID)
+print(f"   Authorized sites for user {JWT_USER_ID}: {JWT_SITES}", flush=True)
 
 # ─── Static UI directory ──────────────────────────────────────────────────────
 UI_DIR = Path(_THIS_DIR).parent.parent / "ui"
