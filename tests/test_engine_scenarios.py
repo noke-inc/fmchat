@@ -838,8 +838,90 @@ check("company does NOT use WHERE 1=1 (unscoped)", sql_not_contains(sql, "WHERE 
 check("company selects name", sql_contains(sql, "name"), sql)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 23. ROLES – roles table with site scoping via users_roles
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n── 23. Roles ─────────────────────────────────────────────────────────")
+
+db, sql, _raw, _params = run(["role"], "DATA_RETRIEVAL")
+check("role uses roles table", sql_contains(sql, "FROM roles"), sql)
+check("role has INNER JOIN users_roles for site scoping", sql_contains(sql, "INNER JOIN users_roles"), sql)
+check("role scoped by site_id via users_roles", sql_contains(sql, "site_id"), sql)
+check("role selects name", sql_contains(sql, "name"), sql)
+check("role selects tier", sql_contains(sql, "tier"), sql)
+
+db, sql, _raw, _params = run(["role"], "DATA_AGGREGATION", filters=["count"])
+check("role count uses COUNT(*)", sql_contains(sql, "COUNT(*)"), sql)
+check("role count has users_roles join", sql_contains(sql, "users_roles"), sql)
+
+# User + Role join (via users_roles junction)
+db, sql, _raw, _params = run(["user", "role"], "DATA_RETRIEVAL", search="employee2")
+check("user+role joins users_roles", sql_contains(sql, "users_roles"), sql)
+check("user+role also joins roles", sql_contains(sql, "roles"), sql)
+check("user+role search propagates", sql_contains(sql, "employee2"), sql)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 24. ROLE_PERMISSION – roles_permissions with role-based site scoping
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n── 24. Role Permissions ──────────────────────────────────────────────")
+
+db, sql, _raw, _params = run(["role_permission"], "DATA_RETRIEVAL")
+check("role_permission uses roles_permissions table", sql_contains(sql, "FROM roles_permissions"), sql)
+check("role_permission selects permission column", sql_contains(sql, "permission"), sql)
+
+# Permission queries as root entity must be site-scoped via role + users_roles
+# "what all permissions do we have" should ONLY show permissions for roles at THIS site
+db, sql, _raw, _params = run(["role_permission"], "DATA_RETRIEVAL")
+check("role_permission as root joins to roles table", sql_contains(sql, "roles t_role") or sql_contains(sql, "JOIN roles"), sql)
+check("role_permission as root has INNER JOIN users_roles for site scoping", sql_contains(sql, "INNER JOIN users_roles ur_rp_scope"), sql)
+check("role_permission as root scoped by site_id", "_rp_site_0" in _params or "_rp_site" in str(_params), sql)
+
+# Permission search with partial match
+db, sql, _raw, _params = run(["role_permission"], "DATA_RETRIEVAL", search="move out")
+check("role_permission search propagates", sql_contains(sql, "move out"), sql)
+check("role_permission uses LIKE for search", sql_contains(sql, "LIKE"), sql)
+
+# Role + Permission with site scoping (role as root triggers users_roles join)
+db, sql, _raw, _params = run(["role", "role_permission"], "DATA_RETRIEVAL", search="move out")
+check("role+permission joins roles_permissions", sql_contains(sql, "roles_permissions"), sql)
+check("role+permission has INNER JOIN users_roles for site scoping", sql_contains(sql, "INNER JOIN users_roles"), sql)
+check("role+permission search propagates", sql_contains(sql, "move out"), sql)
+
+# Role + Permission (checking specific permission existence)
+db, sql, _raw, _params = run(["role", "role_permission"], "DATA_RETRIEVAL", search="move_out")
+check("role+permission search for move_out", sql_contains(sql, "move_out"), sql)
+check("role+permission site scoped via users_roles", sql_contains(sql, "users_roles"), sql)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 25. FEATUREFLAG – featureflags with site scoping via featureflags_assignments
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n── 25. Feature Flags ─────────────────────────────────────────────────")
+
+db, sql, _raw, _params = run(["featureflag"], "DATA_RETRIEVAL")
+check("featureflag uses featureflags table", sql_contains(sql, "FROM featureflags"), sql)
+check("featureflag has INNER JOIN featureflags_assignments for site scoping", sql_contains(sql, "INNER JOIN featureflags_assignments"), sql)
+check("featureflag scoped by site_id via assignments", sql_contains(sql, "site_id"), sql)
+check("featureflag selects name", sql_contains(sql, "name"), sql)
+check("featureflag selects description", sql_contains(sql, "description"), sql)
+check("featureflag selects is_default", sql_contains(sql, "is_default"), sql)
+
+# Feature flag retrieval should NOT use COUNT aggregation
+db, sql, _raw, _params = run(["featureflag"], "DATA_RETRIEVAL", search="mobile")
+check("featureflag search by name uses DATA_RETRIEVAL", sql_contains(sql, "SELECT"), sql)
+check("featureflag search NOT aggregation", sql_not_contains(sql, "COUNT(*)"), sql)
+check("featureflag search has featureflags_assignments join", sql_contains(sql, "featureflags_assignments"), sql)
+check("featureflag search propagates", sql_contains(sql, "mobile"), sql)
+
+# Feature flag enabled check
+db, sql, _raw, _params = run(["featureflag"], "DATA_RETRIEVAL", filters=["enabled"])
+check("featureflag enabled filter uses is_default", sql_contains(sql, "is_default"), sql)
+check("featureflag enabled has site scoping", sql_contains(sql, "featureflags_assignments"), sql)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUMMARY
 print("\n" + "═" * 70)
 passed = sum(1 for r in results if r[0] == PASS)
 failed = sum(1 for r in results if r[0] == FAIL)

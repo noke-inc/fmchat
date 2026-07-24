@@ -221,6 +221,10 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
                     for bat_col in ["voltage_battery", "voltage_wired", "battery_state"]:
                         if bat_col in child_cols and bat_col not in deny_cols:
                             select_fields.append(f"{assigned_alias}.{bat_col} AS lock_{bat_col}")
+                # For role_permission entity: include the permission column (critical for listing permissions)
+                if entity_name == "role_permission":
+                    if "permission" in child_cols and "permission" not in deny_cols:
+                        select_fields.append(f"{assigned_alias}.permission AS role_permission_permission")
 
     # =============================================================================
     # ─── 5. MULTI-TENANT SESSION CONTEXT GUARD RAIL FILTERS ───
@@ -306,6 +310,76 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         )
         for _i, _sid in enumerate(_user_site_ids):
             query_params[f"_ur_site_{_i}"] = _sid
+
+    # ── Special case: scope roles by site via users_roles junction table ─────
+    # The roles table has no direct site_id column. Join users_roles to get
+    # only roles that are assigned to users in the session's site.
+    _role_site_ids = session_context.get("site_id")
+    if (
+        entity_meta.get("physical_table") == "roles"
+        and root_entity == "role"
+        and _role_site_ids
+        and isinstance(_role_site_ids, (list, tuple))
+        and len(_role_site_ids) > 0
+    ):
+        _role_ph = ", ".join([f"%(_role_site_{_i})s" for _i in range(len(_role_site_ids))])
+        join_clauses.append(
+            f"INNER JOIN users_roles ur_role_scope ON ur_role_scope.role_id = t0.id "
+            f"AND ur_role_scope.site_id IN ({_role_ph})"
+        )
+        for _i, _sid in enumerate(_role_site_ids):
+            query_params[f"_role_site_{_i}"] = _sid
+
+    # ── Special case: scope role_permission by site via role + users_roles ──
+    # The roles_permissions table has no site_id. Must join through roles table,
+    # then through users_roles junction to scope by session site_id.
+    _rp_site_ids = session_context.get("site_id")
+    if (
+        entity_meta.get("physical_table") == "roles_permissions"
+        and root_entity == "role_permission"
+        and _rp_site_ids
+        and isinstance(_rp_site_ids, (list, tuple))
+        and len(_rp_site_ids) > 0
+    ):
+        # First join to roles table (if not already joined)
+        if "role" not in alias_map:
+            roles_entity = SCHEMA_CATALOG["entities"]["role"]
+            roles_alias = "t_role"
+            alias_map["role"] = roles_alias
+            join_clauses.append(
+                f"INNER JOIN {roles_entity['physical_table']} {roles_alias} "
+                f"ON {roles_alias}.id = t0.role_id"
+            )
+        else:
+            roles_alias = alias_map["role"]
+        
+        # Now join users_roles to scope by site_id
+        _rp_ph = ", ".join([f"%(_rp_site_{_i})s" for _i in range(len(_rp_site_ids))])
+        join_clauses.append(
+            f"INNER JOIN users_roles ur_rp_scope ON ur_rp_scope.role_id = {roles_alias}.id "
+            f"AND ur_rp_scope.site_id IN ({_rp_ph})"
+        )
+        for _i, _sid in enumerate(_rp_site_ids):
+            query_params[f"_rp_site_{_i}"] = _sid
+
+    # ── Special case: scope featureflags by site via featureflags_assignments ─
+    # The featureflags table has no direct site_id. Join featureflags_assignments
+    # to get only features enabled for the session's site.
+    _ff_site_ids = session_context.get("site_id")
+    if (
+        entity_meta.get("physical_table") == "featureflags"
+        and root_entity == "featureflag"
+        and _ff_site_ids
+        and isinstance(_ff_site_ids, (list, tuple))
+        and len(_ff_site_ids) > 0
+    ):
+        _ff_ph = ", ".join([f"%(_ff_site_{_i})s" for _i in range(len(_ff_site_ids))])
+        join_clauses.append(
+            f"INNER JOIN featureflags_assignments ffa_scope ON ffa_scope.featureflag_uuid = t0.uuid "
+            f"AND ffa_scope.site_id IN ({_ff_ph})"
+        )
+        for _i, _sid in enumerate(_ff_site_ids):
+            query_params[f"_ff_site_{_i}"] = _sid
 
     if security_group_filters:
         where_clauses.append(" AND ".join(security_group_filters))
@@ -487,17 +561,26 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             if str(col_props.get("type", "")).lower() in approved_text_types:
                 search_clauses.append(f"t0.{col_name} LIKE %(search)s")
         # Joined entities: search only safe name/email columns (avoids datetime contamination)
-        _safe_search_cols = {"first_name", "last_name", "email", "name", "mac", "serial_number", "shortmac"}
+        # Plus special columns marked for partial search (e.g. permission)
+        _safe_search_cols = {"first_name", "last_name", "email", "name", "mac", "serial_number", "shortmac", "permission"}
         for entity_name, assigned_alias in alias_map.items():
             if entity_name == root_entity:
                 continue
             entity_cols = SCHEMA_CATALOG["entities"][entity_name].get("allowed_columns", {})
             for col_name, col_props in entity_cols.items():
                 if col_name in _safe_search_cols and str(col_props.get("type", "")).lower() in approved_text_types:
-                    search_clauses.append(f"{assigned_alias}.{col_name} LIKE %(search)s")
+                    # Special handling for permission column: also search with underscores replacing spaces
+                    if col_name == "permission":
+                        search_clauses.append(f"{assigned_alias}.{col_name} LIKE %(search)s")
+                        # Add normalized version: "move out" → "move_out"
+                        search_clauses.append(f"{assigned_alias}.{col_name} LIKE %(search_normalized)s")
+                    else:
+                        search_clauses.append(f"{assigned_alias}.{col_name} LIKE %(search)s")
         if search_clauses:
             where_clauses.append(f"({' OR '.join(search_clauses)})")
         query_params["search"] = f"%{search_keyword}%"
+        # Normalized search for permission column: spaces → underscores
+        query_params["search_normalized"] = f"%{search_keyword.replace(' ', '_')}%"
 
     # =============================================================================
     #  ─── 7. FINAL SQL ASSEMBLY WITH GROUP BY / HAVING / ORDER BY ───

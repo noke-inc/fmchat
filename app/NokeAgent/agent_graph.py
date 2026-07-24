@@ -92,6 +92,23 @@ def _build_followup_question(user_query: str) -> str:
     q = user_query.lower().strip()
     followup_parts = []
 
+    # Special case: Permission/role queries
+    if any(w in q for w in ("permission", "permissions", "role", "roles", "access")):
+        if any(w in q for w in ("move", "move_out", "moveout", "checkout", "evict")):
+            followup_parts.append(
+                "I couldn't find a permission matching 'move out' or 'move_out'. "
+                "Could you try searching for the exact permission name? For example: "
+                "'unit_move_out', 'support_move_out', or 'view_move_out_prediction_report'. "
+                "You can also ask 'what permissions are available' to see all options."
+            )
+            return "\n".join(followup_parts)
+        else:
+            followup_parts.append(
+                "I couldn't find matching permissions or roles. "
+                "Could you provide more details about the specific permission name or role you're looking for?"
+            )
+            return "\n".join(followup_parts)
+
     # Ask for clarification about the person/name being searched
     import re as _re
     name_candidates = _re.findall(r'\b[A-Z][a-z]{1,}\b|\b[A-Za-z0-9]+\b', user_query)
@@ -102,7 +119,8 @@ def _build_followup_question(user_query: str) -> str:
         "locks", "user", "users", "tenant", "tenants", "site", "gateway", "event",
         "events", "company", "for", "by", "with", "from", "in", "at", "of", "a",
         "an", "and", "or", "not", "to", "on", "this", "that", "their", "its",
-        "rented", "occupied", "available", "active", "offline", "online"
+        "rented", "occupied", "available", "active", "offline", "online", "do",
+        "you", "have", "has", "can", "does", "enabled", "disabled"
     }
     candidate_names = [w for w in name_candidates if w.lower() not in schema_stop and len(w) > 1]
 
@@ -329,6 +347,30 @@ def call_bedrock_orchestrator(state: AgentState):
             if needed:
                 filtered.append(indirect_ent)
         discovered_entities = filtered
+    
+    # ─── Filter out contextual "site" references ──────────────────────────────
+    # When "site" is matched but appears only in contextual phrases like "in this site",
+    # "for this site", "at the site", remove it if there are other more specific entities.
+    # "site" should only be included when explicitly queried (e.g., "show me sites", "which sites").
+    _contextual_site_patterns = [
+        r'\bin\s+(this|the|our|my)\s+site\b',
+        r'\bfor\s+(this|the|our|my)\s+site\b',
+        r'\bat\s+(this|the|our|my)\s+site\b',
+        r'\bof\s+(this|the|our|my)\s+site\b',
+        r'\bthere\s+in\s+(this|the)\s+site\b'
+    ]
+    if "site" in discovered_entities and len(discovered_entities) > 1:
+        if any(re.search(pat, clean_prompt_normalized) for pat in _contextual_site_patterns):
+            # Check if "site" was explicitly requested ("show sites", "which sites", "list sites")
+            _explicit_site_patterns = [
+                r'\bshow\s+(me\s+)?(all\s+)?sites?\b',
+                r'\blist\s+(all\s+)?sites?\b',
+                r'\bwhich\s+sites?\b',
+                r'\bhow\s+many\s+sites?\b',
+                r'\bcount\s+(of\s+)?sites?\b'
+            ]
+            if not any(re.search(pat, clean_prompt_normalized) for pat in _explicit_site_patterns):
+                discovered_entities = [e for e in discovered_entities if e != "site"]
 
     # ─── "rented by / occupied by [name]" → ensure user entity is included ───
     # When a query references a person by name without using an entity alias,
@@ -534,8 +576,13 @@ def call_bedrock_orchestrator(state: AgentState):
         "12. For 'show me the last N', 'recent N', 'latest N' requests (e.g. 'last 5 activities', 'recent 10 events'): "
         "use intent_type='DATA_RETRIEVAL', order_by={'column':'created_at','direction':'DESC'}, and do NOT add 'count' to semantic_filters. "
         "The number N is the desired result count — pass it as limit (default 50 if not specified). "
-        "NEVER use DATA_AGGREGATION for 'show me', 'list', 'display', 'what are the', 'what is the', 'all available', or 'last N' requests. "
-        "These always require full records — use DATA_RETRIEVAL. Only use DATA_AGGREGATION when the user explicitly says 'how many', 'count', or 'total'.\n"
+        "CRITICAL: ALWAYS use intent_type='DATA_RETRIEVAL' (NEVER DATA_AGGREGATION) for ANY query containing these patterns: "
+        "'show me', 'show all', 'list', 'list all', 'display', 'what are', 'what is', 'which', 'all available', 'last N', 'recent', "
+        "'what ... belong to', 'what ... are there', 'give me', 'get me'. "
+        "These patterns REQUIRE full records with details — use DATA_RETRIEVAL. "
+        "For these queries, do NOT add 'count' to semantic_filters array. "
+        "Only use DATA_AGGREGATION when the user's PRIMARY question is explicitly 'how many', 'count', 'total', 'sum', or 'average' "
+        "WITHOUT also asking for details or names.\n"
         "13. When a question asks 'rented by X', 'occupied by X', 'assigned to X', or 'belongs to X' — "
         "always include the 'user' entity in target_subjects so user information is searched. "
         "Put 'user' or the subject entity first. Example: 'which unit is rented by employee2' → "
@@ -551,7 +598,23 @@ def call_bedrock_orchestrator(state: AgentState):
         "For duration questions (how many days in unit), retrieve change_log records with status_change 'Moved In' and 'Moved Out' for the same unit/user — "
         "the synthesis will calculate the time difference.\n"
         "17. When a question asks about the COMPANY name, details, or information (e.g. 'what is the company name', 'show company info'), "
-        "use intent_type: DATA_RETRIEVAL with target_subjects: 'company'. NEVER use DATA_AGGREGATION for single-record lookup questions."
+        "use intent_type: DATA_RETRIEVAL with target_subjects: 'company'. NEVER use DATA_AGGREGATION for single-record lookup questions.\n"
+        "18. When a question asks about ROLES or PERMISSIONS for a user: "
+        "use 'user, role, role_permission' entities together. Example: 'what is the role for employee2' → target_subjects: 'user, role', search_keyword: 'employee2'. "
+        "For permission checks (e.g. 'does user X have move out permission' or 'is move out permission enabled'), "
+        "ALWAYS include 'role' entity as first or second subject to enable site scoping: target_subjects: 'role, role_permission', search_keyword: 'move out'. "
+        "For listing all permissions ('what permissions do we have', 'show all permissions', 'list permissions'), "
+        "use intent_type='DATA_RETRIEVAL' with target_subjects: 'role, role_permission' (NOT DATA_AGGREGATION) so actual permission names are returned, not just a count. "
+        "The word 'available' in permission context (e.g. 'what permissions are available for user X') should NOT trigger 'unit' entity — it refers to permissions assigned to the user's role. "
+        "Roles are scoped by site_id via users_roles junction table automatically.\n"
+        "19. When a question asks about FEATURE FLAGS (enabled features, feature availability, flags for a site): "
+        "ALWAYS use intent_type='DATA_RETRIEVAL' (never DATA_AGGREGATION) with target_subjects: 'featureflag'. "
+        "Feature flags are automatically scoped to the session's site_id via featureflags_assignments junction table. "
+        "Example: 'what features are enabled' → intent_type: 'DATA_RETRIEVAL', target_subjects: 'featureflag'. "
+        "Example: 'is feature X enabled' → intent_type: 'DATA_RETRIEVAL', target_subjects: 'featureflag', search_keyword: 'X'. "
+        "The synthesis will show feature names and descriptions from the results.\n"
+        "20. For permission search queries, the 'permission' column uses partial matching (LIKE operator). "
+        "Example: 'move out permission' will match any permission containing 'move out' or 'move_out'."
     )
     
     # print("\n📡" + "─"*32 + " OUTGOING AMAZON NOVA SYSTEM INGEST " + "─"*32, file=sys.stderr)
@@ -1386,7 +1449,11 @@ def generate_conversational_response(state: AgentState):
         "13. For zone questions: report the zone name and the units that belong to it (unit names). "
         "For 'how many units in zone X' questions, count the unit records returned.\n"
         "14. For change_log/unit history questions: report unit_id (as unit reference), status_change, created_date, and user reference for each record. "
-        "For duration questions (how many days), find the 'Moved In' and 'Moved Out' records for the same unit/user and compute DATEDIFF(moved_out_date, moved_in_date) days.\n\n"
+        "For duration questions (how many days), find the 'Moved In' and 'Moved Out' records for the same unit/user and compute DATEDIFF(moved_out_date, moved_in_date) days.\n"
+        "15. For role/permission questions: report the role name and any associated permissions. "
+        "When checking if a user has a specific permission, report whether the permission exists in their role's permission list.\n"
+        "16. For feature flag questions: report the feature flag name, description, and whether it is enabled (is_default=1) or assigned to the current site. "
+        "If the feature is not enabled for the site, indicate 'This feature is not available for your site.'\n\n"
         f"OPERATOR INITIAL PROMPT: '{user_initial_prompt}'\n"
         f"{compressed_rows_context}"
     )

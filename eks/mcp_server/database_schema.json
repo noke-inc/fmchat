@@ -14,7 +14,11 @@
       "events",
       "v2_zones",
       "v2_zones_to_units",
-      "hermes_change_logs"
+      "hermes_change_logs",
+      "roles",
+      "roles_permissions",
+      "featureflags",
+      "featureflags_assignments"
     ]
   },
   "entities": {
@@ -195,7 +199,7 @@
             "storage type"
           ],
           "allowed_values": [
-            "rentable",            
+            "rentable",
             "site",
             "service",
             "employee",
@@ -208,7 +212,7 @@
               "regular",
               "normal",
               "rent"
-            ],            
+            ],
             "site": [
               "site unit",
               "admin unit",
@@ -948,24 +952,72 @@
     },
     "role": {
       "physical_table": "roles",
+      "db_source": "smartentry-main",
       "aliases": [
         "role",
         "roles",
-        "permission",
-        "permissions",
-        "job title",
-        "access level"
+        "user role",
+        "permission role",
+        "access role"
       ],
       "allowed_columns": {
         "id": {
           "type": "int"
         },
+        "uuid": {
+          "type": "varchar"
+        },
         "name": {
+          "type": "varchar"
+        },
+        "tier": {
+          "type": "int"
+        },
+        "default_for_site": {
+          "type": "int"
+        },
+        "company_id": {
+          "type": "int"
+        },
+        "company_uuid": {
           "type": "varchar"
         }
       },
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        }
+      },
+      "column_metadata": {
+        "name": {
+          "aliases": [
+            "role name",
+            "role title",
+            "position"
+          ]
+        },
+        "tier": {
+          "aliases": [
+            "role tier",
+            "level",
+            "access level"
+          ]
+        }
+      },
+      "groupable_dimensions": [
+        "name",
+        "tier"
+      ],
       "relationships": {
-        "user": "users_roles.role_id = roles.id"
+        "user": "users_roles.role_id = roles.id",
+        "role_permission": "roles.id = roles_permissions.role_id"
+      },
+      "site_scope_via_junction": {
+        "junction_table": "users_roles",
+        "junction_site_column": "site_id",
+        "junction_role_column": "role_id",
+        "entity_id_column": "id"
       }
     },
     "site_hours": {
@@ -1707,6 +1759,204 @@
         "unit": "hermes_change_logs.unit_id = v2_units.id",
         "user": "hermes_change_logs.user_id = users.id"
       }
+    },
+    "role_permission": {
+      "physical_table": "roles_permissions",
+      "db_source": "smartentry-main",
+      "aliases": [
+        "permission",
+        "permissions",
+        "role permission",
+        "role permissions",
+        "access permission",
+        "user permission",
+        "capability",
+        "capabilities"
+      ],
+      "allowed_columns": {
+        "id": {
+          "type": "int"
+        },
+        "uuid": {
+          "type": "varchar"
+        },
+        "role_id": {
+          "type": "int"
+        },
+        "role_uuid": {
+          "type": "varchar"
+        },
+        "permission": {
+          "type": "varchar"
+        },
+        "created_at": {
+          "type": "datetime"
+        }
+      },
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        }
+      },
+      "column_metadata": {
+        "permission": {
+          "aliases": [
+            "permission name",
+            "access right",
+            "capability",
+            "action",
+            "what can do"
+          ],
+          "search_mode": "partial"
+        }
+      },
+      "groupable_dimensions": [
+        "permission"
+      ],
+      "relationships": {
+        "role": "roles_permissions.role_id = roles.id"
+      },
+      "requires_role_join": true
+    },
+    "featureflag": {
+      "physical_table": "featureflags",
+      "db_source": "smartentry-main",
+      "aliases": [
+        "feature flag",
+        "feature flags",
+        "feature",
+        "features",
+        "feature toggle",
+        "flag",
+        "flags",
+        "capability flag"
+      ],
+      "allowed_columns": {
+        "id": {
+          "type": "int"
+        },
+        "uuid": {
+          "type": "varchar"
+        },
+        "name": {
+          "type": "varchar"
+        },
+        "description": {
+          "type": "varchar"
+        },
+        "updated": {
+          "type": "datetime"
+        },
+        "rollout_tier": {
+          "type": "int"
+        },
+        "required_firmware": {
+          "type": "varchar"
+        },
+        "rollout_date": {
+          "type": "datetime"
+        },
+        "is_default": {
+          "type": "int"
+        }
+      },
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        }
+      },
+      "column_metadata": {
+        "name": {
+          "aliases": [
+            "feature name",
+            "flag name",
+            "feature title"
+          ]
+        },
+        "is_default": {
+          "aliases": [
+            "default",
+            "enabled by default",
+            "default state"
+          ],
+          "enum_map": {
+            "1": [
+              "enabled",
+              "on",
+              "active",
+              "true",
+              "yes"
+            ],
+            "0": [
+              "disabled",
+              "off",
+              "inactive",
+              "false",
+              "no"
+            ]
+          }
+        }
+      },
+      "groupable_dimensions": [
+        "name",
+        "rollout_tier"
+      ],
+      "relationships": {
+        "site": "featureflags_assignments.featureflag_uuid = featureflags.uuid"
+      },
+      "site_scope_via_junction": {
+        "junction_table": "featureflags_assignments",
+        "junction_site_column": "site_id",
+        "junction_feature_column": "featureflag_uuid",
+        "entity_uuid_column": "uuid"
+      },
+      "require_site_join": true
+    },
+    "featureflag_assignment": {
+      "physical_table": "featureflags_assignments",
+      "db_source": "smartentry-main",
+      "site_scope_column": "site_id",
+      "aliases": [
+        "feature assignment",
+        "flag assignment",
+        "feature site assignment"
+      ],
+      "allowed_columns": {
+        "uuid": {
+          "type": "varchar"
+        },
+        "featureflag_uuid": {
+          "type": "varchar"
+        },
+        "site_id": {
+          "type": "int"
+        },
+        "site_uuid": {
+          "type": "varchar"
+        },
+        "type": {
+          "type": "varchar"
+        },
+        "updated": {
+          "type": "datetime"
+        }
+      },
+      "allowed_aggregations": {
+        "count": {
+          "sql_function": "COUNT(*)",
+          "output_column": "count"
+        }
+      },
+      "column_metadata": {},
+      "groupable_dimensions": [
+        "site_id"
+      ],
+      "relationships": {
+        "featureflag": "featureflags_assignments.featureflag_uuid = featureflags.uuid",
+        "site": "featureflags_assignments.site_id = sites.id"
+      }
     }
   },
   "junction_bridges": {
@@ -1759,6 +2009,16 @@
       "via_table": "v2_zones_to_units",
       "step_1": "v2_zones_to_units.unit_id = v2_units.id",
       "step_2": "v2_zones_to_units.zone_id = v2_zones.id"
+    },
+    "featureflag.site": {
+      "via_table": "featureflags_assignments",
+      "step_1": "featureflags_assignments.featureflag_uuid = featureflags.uuid",
+      "step_2": "featureflags_assignments.site_id = sites.id"
+    },
+    "site.featureflag": {
+      "via_table": "featureflags_assignments",
+      "step_1": "featureflags_assignments.site_id = sites.id",
+      "step_2": "featureflags_assignments.featureflag_uuid = featureflags.uuid"
     }
   },
   "safety": {
