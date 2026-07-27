@@ -311,14 +311,8 @@
         },
         "phone": {
           "type": "varchar"
-        },
-        "type": {
-          "type": "varchar"
-        },
+        },       
         "state": {
-          "type": "varchar"
-        },
-        "login_type": {
           "type": "varchar"
         },
         "company_id": {
@@ -386,109 +380,10 @@
               "registered"
             ]
           }
-        },
-        "type": {
-          "aliases": [
-            "user type",
-            "user role",
-            "account type",
-            "role"
-          ],
-          "allowed_values": [
-            "company_manager",
-            "client",
-            "site_manager",
-            "noke_admin",
-            "inactive",
-            "employee",
-            "manual",
-            "technician",
-            "user"
-          ],
-          "enum_map": {
-            "company_manager": [
-              "company_manager"
-            ],
-            "client": [
-              "client",
-              "customer",
-              "tenant",
-              "renter",
-              "lessee"
-            ],
-            "site_manager": [
-              "site_manager"
-            ],
-            "noke_admin": [
-              "noke_admin"
-            ],
-            "inactive": [
-              "inactive",
-              "inactive user",
-              "deactivated user"
-            ],
-            "employee": [
-              "employee",
-              "staff",
-              "worker",
-              "staff member"
-            ],
-            "manual": [
-              "manual",
-              "manual entry",
-              "manual user"
-            ],
-            "technician": [
-              "technician",
-              "tech",
-              "field technician"
-            ],
-            "user": [
-              "standard user",
-              "basic user",
-              "regular user",
-              "default user"
-            ]
-          }
-        },
-        "login_type": {
-          "aliases": [
-            "login method",
-            "auth type",
-            "authentication type",
-            "sign in method"
-          ],
-          "allowed_values": [
-            "noke",
-            "aws",
-            "okta"
-          ],
-          "enum_map": {
-            "noke": [
-              "noke",
-              "noke app",
-              "noke login",
-              "noke auth"
-            ],
-            "aws": [
-              "aws",
-              "amazon",
-              "aws cognito",
-              "cognito"
-            ],
-            "okta": [
-              "okta",
-              "okta sso",
-              "sso",
-              "single sign-on"
-            ]
-          }
         }
       },
       "groupable_dimensions": [
         "state",
-        "type",
-        "login_type",
         "country_code"
       ],
       "relationships": {
@@ -1331,7 +1226,9 @@
         "audit log",
         "last activity",
         "recent activity",
-        "user activity"
+        "user activity",
+        "visited",
+        "visit"
       ],
       "allowed_columns": {
         "id": {

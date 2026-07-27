@@ -232,6 +232,27 @@ def call_bedrock_orchestrator(state: AgentState):
 
     messages = state["messages"]
     
+    # ─── SECURITY GUARD: Reject queries for credentials before any LLM call ───
+    _raw_latest = messages[-1].content if messages else ""
+    _raw_latest_text = (
+        " ".join(b.get("text", "") for b in _raw_latest if isinstance(b, dict))
+        if isinstance(_raw_latest, list) else str(_raw_latest)
+    ).lower()
+    _SENSITIVE_PATTERNS = [
+        r'\bpassword[s]?\b', r'\bpasswd\b', r'\bcredential[s]?\b',
+        r'\bsecret[s]?\b', r'\bprivate.?key[s]?\b', r'\bapi.?key[s]?\b',
+        r'\bauth.?token[s]?\b', r'\baccess.?token[s]?\b',
+        r'\bssh.?key[s]?\b', r'\bencryption.?key[s]?\b',
+    ]
+    if any(re.search(p, _raw_latest_text) for p in _SENSITIVE_PATTERNS):
+        _SECURITY_REFUSAL = (
+            "I'm sorry, but I can't retrieve or display passwords, credentials, or "
+            "any other sensitive security information. This data is protected and never "
+            "exposed through this interface. Please contact your system administrator "
+            "if you need account access assistance."
+        )
+        return {"messages": [AIMessage(content=_SECURITY_REFUSAL)]}
+
     # ─── EXTRACTION FIX: SAFE STRING CONVERSION FOR STUDIO CONTAINERS ─── [▲]
     pending_user_query = state.get("pending_user_query")
     raw_content = messages[-1].content
@@ -572,13 +593,22 @@ def call_bedrock_orchestrator(state: AgentState):
         "When a question asks about GATEWAYS (online/offline, connectivity, access points, access controllers), use ONLY the 'gateway' entity. "
         "Do NOT include 'lock' or 'unit' in target_subjects for gateway questions. "
         "Gate and exitgate type locks are known as 'entries', not 'gateways' — use 'gateway' entity for physical gateway devices.\n"
-        "When a question asks about ACCESS EVENTS, ACTIVITY, HISTORY, or LOGS, use the 'event' entity.\n"
+        "When a question asks about ACCESS EVENTS, ACTIVITY, HISTORY, or LOGS, use the 'event' entity. "
+        "CRITICAL: Any question about VISITS, VISITORS, who VISITED, who ACCESSED, who ENTERED, RECENT ENTRIES, "
+        "or activity within a TIME WINDOW (last week, last month, yesterday, past N days) "
+        "MUST use the 'event' entity — NOT the 'user' entity alone. "
+        "The events table stores access records; 'by_user_gen' holds who triggered the event, 'for_user_gen' holds the target user. "
+        "Role-type words like 'tenant', 'client', 'employee' in a visit/access context describe WHO visited — "
+        "they are NOT filters on user.type (that column does not exist). Do NOT add them to semantic_filters. "
+        "Examples: 'any tenant visited last week' → target_subjects: 'event', intent_type: 'DATA_RETRIEVAL'; "
+        "'who accessed the facility yesterday' → target_subjects: 'event', intent_type: 'DATA_RETRIEVAL'; "
+        "'recent entries this month' → target_subjects: 'event', intent_type: 'DATA_RETRIEVAL'.\n"
         "12. For 'show me the last N', 'recent N', 'latest N' requests (e.g. 'last 5 activities', 'recent 10 events'): "
         "use intent_type='DATA_RETRIEVAL', order_by={'column':'created_at','direction':'DESC'}, and do NOT add 'count' to semantic_filters. "
         "The number N is the desired result count — pass it as limit (default 50 if not specified). "
         "CRITICAL: ALWAYS use intent_type='DATA_RETRIEVAL' (NEVER DATA_AGGREGATION) for ANY query containing these patterns: "
         "'show me', 'show all', 'list', 'list all', 'display', 'what are', 'what is', 'which', 'all available', 'last N', 'recent', "
-        "'what ... belong to', 'what ... are there', 'give me', 'get me'. "
+        "'what ... belong to', 'what ... are there', 'give me', 'get me', 'does any', 'has any', 'any ... have', 'do any'. "
         "These patterns REQUIRE full records with details — use DATA_RETRIEVAL. "
         "For these queries, do NOT add 'count' to semantic_filters array. "
         "Only use DATA_AGGREGATION when the user's PRIMARY question is explicitly 'how many', 'count', 'total', 'sum', or 'average' "
@@ -589,6 +619,10 @@ def call_bedrock_orchestrator(state: AgentState):
         "target_subjects: 'unit, user', search_keyword: 'employee2', semantic_filters: ['rented'].\n"
         "14. 'People', 'person', 'client', 'clients', 'residents', 'members' all refer to the 'user' entity. "
         "Example: 'how many people are onsite' → target_subjects: 'user', intent_type: 'DATA_AGGREGATION', semantic_filters: ['count'].\n"
+        "When the user asks to LIST or SHOW 'tenant users', 'tenants', 'clients', or users by role type for a facility, "
+        "include the 'role' entity so the roles table is joined: target_subjects: 'user, role'. "
+        "Example: 'list all tenant users for my facility' → target_subjects: 'user, role', intent_type: 'DATA_RETRIEVAL'; "
+        "'show me all clients at this site' → target_subjects: 'user, role', intent_type: 'DATA_RETRIEVAL'.\n"
         "15. If the user asks for both a count AND individual details in the same question (e.g. 'how many X and their Y information'), "
         "use intent_type: DATA_RETRIEVAL so full records are returned. The synthesis will count and describe them together.\n"
         "16. When a question asks about ZONES or AREAS (which zone a unit belongs to, units in a zone, how many zones), "
@@ -606,9 +640,8 @@ def call_bedrock_orchestrator(state: AgentState):
         "For listing all permissions ('what permissions do we have', 'show all permissions', 'list permissions'), "
         "use intent_type='DATA_RETRIEVAL' with target_subjects: 'role, role_permission' (NOT DATA_AGGREGATION) so actual permission names are returned, not just a count. "
         "USER TYPE vs ROLE NAME — CRITICAL DISTINCTION: "
-        "In the database, users have a 'type' column (company_manager, site_manager, employee) with UNDERSCORES. "
-        "Roles have a 'name' column (company manager, site manager, employee) WITHOUT UNDERSCORES. "
-        "These are DIFFERENT columns on DIFFERENT tables. "
+        "The users table does NOT have a 'type' column — NEVER generate a 'users.type' filter. "
+        "Users are categorized exclusively by their ROLE NAME stored in roles.name (e.g. 'tenant', 'client', 'company manager', 'site manager', 'employee'). "
         "RULE: When the user asks 'what roles/permissions does [name] have', [name] is a ROLE NAME stored in roles.name (no underscores). "
         "Use search_keyword: '[name as-is with spaces]' to match against roles.name. "
         "Do NOT use semantic_filters for role name lookups. "
@@ -617,7 +650,7 @@ def call_bedrock_orchestrator(state: AgentState):
         "'what roles does company manager have' → target_subjects: 'user, role', search_keyword: 'company manager'; "
         "'what roles does site manager have' → target_subjects: 'user, role', search_keyword: 'site manager'; "
         "'what role does user John have' → target_subjects: 'user, role', search_keyword: 'John'; "
-        "'how many company_manager users are there' → semantic_filters: ['company_manager'] (underscore = user.type column filter); "
+        "'list all tenants in this facility' → target_subjects: 'user, role', search_keyword: 'tenant', intent_type: 'DATA_RETRIEVAL' (tenant is a role name in roles.name, NOT a user type); "
         "'what roles are available in the site' → target_subjects: 'role' (site scoping is automatic); "
         "'what permissions are available in the site' → target_subjects: 'role, role_permission' (site scoping is automatic). "
         "The word 'available' in permission context should NOT trigger 'unit' entity. "

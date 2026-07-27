@@ -220,8 +220,8 @@ check("tenant count does NOT filter by company_id", sql_not_contains(sql, "compa
 check("tenant count uses main DB", db == "main", f"db={db}")
 
 db, sql, _raw, _params = run(["user"], "DATA_AGGREGATION", filters=["count", "client"])
-check("tenant (client type) count uses users_roles", sql_contains(sql, "users_roles"), sql)
-check("tenant type filter = 'client'", sql_contains(sql, "'client'"), sql)
+check("tenant (client) count uses users_roles", sql_contains(sql, "users_roles"), sql)
+check("tenant (client) no type filter on users", sql_not_contains(sql, "t0.type"), sql)
 
 db, sql, _raw, _params = run(["user"], "DATA_RETRIEVAL", filters=["active"])
 check("active users scoped by site (users_roles)", sql_contains(sql, "users_roles"), sql)
