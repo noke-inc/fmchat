@@ -166,6 +166,52 @@ def _build_followup_question(user_query: str) -> str:
     return base
 
 
+def _llm_feedback_response(user_query: str) -> str:
+    """
+    Ask the LLM to generate a short, contextual clarification question when
+    the agent cannot retrieve data for the user's query.
+    Falls back to a generic message only if the LLM call itself fails.
+    """
+    from langchain_core.messages import SystemMessage, HumanMessage
+    try:
+        clarification_prompt = [
+            SystemMessage(content=(
+                "You are a helpful AI assistant for a facility management platform. "
+                "The user asked a question, but there was not enough information to retrieve the data — "
+                "either no records were found, or the question was too vague. "
+                "Generate a SHORT, friendly response (1-3 sentences) that:\n"
+                "  1. Acknowledges what they were asking about.\n"
+                "  2. Asks for the ONE specific detail needed to find the answer "
+                "(e.g. the exact unit name, user name, date range, or ID).\n"
+                "  3. Optionally gives a brief concrete example.\n"
+                "Use plain language. Do NOT mention databases, queries, tables, or technical terms. "
+                "Do NOT make up data."
+            )),
+            HumanMessage(content=f'The user asked: "{user_query}"\nGenerate the clarification response.')
+        ]
+        result = _llm().invoke(clarification_prompt)
+        text = ""
+        raw = result.content
+        if isinstance(raw, list):
+            for block in raw:
+                if isinstance(block, dict) and "text" in block:
+                    text += block["text"]
+                elif isinstance(block, str):
+                    text += block
+        else:
+            text = str(raw)
+        text = text.strip()
+        if text:
+            return text
+    except Exception:
+        pass
+    # Absolute fallback — only reached if the LLM call itself throws
+    return (
+        "No matching records were found. "
+        "Could you provide more details — such as the exact name, ID, or status you are looking for?"
+    )
+
+
 # =============================================================================
 # 2. SHARED CONVERSATIONAL GRAPH STATE MATRIX
 # =============================================================================
@@ -1331,7 +1377,7 @@ def recover_no_tool_after_orchestrator(state: AgentState):
                 answer_text = f"Based on the live record database snapshot, the current count is {int(count_value)}."
             elif isinstance(db_rows_matrix, list):
                 if len(db_rows_matrix) == 0:
-                    answer_text = _build_followup_question(effective_query)
+                    answer_text = _llm_feedback_response(effective_query)
                 else:
                     answer_text = f"Based on the live record database snapshot, I found {len(db_rows_matrix)} matching records."
             else:
@@ -1413,9 +1459,9 @@ def generate_conversational_response(state: AgentState):
                     tool_status = str(raw_data.get("tool_status", "")).strip().lower()
                     if tool_status == "success_no_rows":
                         print("\n🛑" + "─"*25 + " DETERMINISTIC NO-DATA RESPONSE " + "─"*25, file=sys.stderr)
-                        print("Tool status indicates zero rows. Returning follow-up question.", file=sys.stderr)
+                        print("Tool status indicates zero rows. Asking LLM for clarification.", file=sys.stderr)
                         print("─"*100 + "\n", file=sys.stderr)
-                        followup = _build_followup_question(user_initial_prompt)
+                        followup = _llm_feedback_response(user_initial_prompt)
                         return {"messages": [AIMessage(content=followup)]}
 
                     if tool_status == "error":
@@ -1429,7 +1475,7 @@ def generate_conversational_response(state: AgentState):
                         payload_data = _sanitize_for_synthesis(payload_data)
                         database_records_text = json.dumps(payload_data, default=str)
                     elif isinstance(payload_data, list) and len(payload_data) == 0:
-                        followup = _build_followup_question(user_initial_prompt)
+                        followup = _llm_feedback_response(user_initial_prompt)
                         return {"messages": [AIMessage(content=followup)]}
                     elif isinstance(payload_data, dict):
                         # For mutation success: strip internal IDs/technical fields before synthesis
@@ -1451,7 +1497,7 @@ def generate_conversational_response(state: AgentState):
                     raw_data = _sanitize_for_synthesis(raw_data)
                     database_records_text = json.dumps(raw_data, default=str)
                 elif isinstance(raw_data, list) and len(raw_data) == 0:
-                    followup = _build_followup_question(user_initial_prompt)
+                    followup = _llm_feedback_response(user_initial_prompt)
                     return {"messages": [AIMessage(content=followup)]}
                 elif isinstance(raw_data, dict) and "error" in raw_data:
                     return {"messages": [AIMessage(content=TOOL_EXECUTION_ERROR_RESPONSE)]}
@@ -1549,9 +1595,9 @@ def generate_conversational_response(state: AgentState):
         print("\n⚠️" + "─"*27 + " CONTENT FILTER / EMPTY SYNTHESIS DETECTED " + "─"*27, file=sys.stderr)
         print(f"Blocked response: {clean_narrative_sentence[:200]}", file=sys.stderr)
         print("─"*100 + "\n", file=sys.stderr)
-        clean_narrative_sentence = _build_followup_question(user_initial_prompt)
+        clean_narrative_sentence = _llm_feedback_response(user_initial_prompt)
 
-    # Final safety net: _build_followup_question may itself return empty for unusual queries.
+    # Final safety net: _llm_feedback_response returns empty only if LLM call throws.
     if not clean_narrative_sentence:
         clean_narrative_sentence = (
             "No matching records were found. "

@@ -405,6 +405,24 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
         where_clauses.append("1=1")
 
     # ================================================================
+    # ─── 5.0 SCHEMA-DRIVEN STATIC ENTITY FILTERS ───
+    # Apply mandatory column=value filters declared in the schema's
+    # "static_where" list for any entity participating in this query.
+    # E.g. unit always requires access_type = 'rentable'.
+    # ================================================================
+    for _sw_entity, _sw_alias in alias_map.items():
+        _sw_filters = SCHEMA_CATALOG["entities"].get(_sw_entity, {}).get("static_where", [])
+        _sw_allowed  = SCHEMA_CATALOG["entities"].get(_sw_entity, {}).get("allowed_columns", {})
+        for _sw_idx, _sw in enumerate(_sw_filters):
+            _sw_col = _sw.get("column", "")
+            _sw_val = _sw.get("value", "")
+            if not _sw_col or _sw_val == "" or _sw_col not in _sw_allowed:
+                continue
+            _sw_key = f"_static_{_sw_entity}_{_sw_idx}_{_sw_col}"
+            where_clauses.append(f"{_sw_alias}.{_sw_col} = %({_sw_key})s")
+            query_params[_sw_key] = _sw_val
+
+    # ================================================================
     # ─── 5.1 SCHEMA-DRIVEN SEMANTIC PREDICATE FILTER COMPILATION ───
     # ================================================================
     group_by_clause = None

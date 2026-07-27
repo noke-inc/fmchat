@@ -254,6 +254,9 @@
         "pms_rental_state",
         "company_id"
       ],
+      "static_where": [
+        {"column": "access_type", "value": "rentable"}
+      ],
       "relationships": {
         "site": "v2_units.site_id = sites.id",
         "lock": "v2_locks_to_units.unit_id = v2_units.id",
