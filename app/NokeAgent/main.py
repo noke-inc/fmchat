@@ -218,6 +218,14 @@ async def chat(req: ChatRequest):
             answer = str(raw)
 
     answer = re.sub(r"<thinking>.*?</thinking>", "", answer, flags=re.DOTALL | re.IGNORECASE).strip()
+
+    # Safety net: never return an empty string to the UI.
+    if not answer:
+        answer = (
+            "I wasn't able to generate a response for that request. "
+            "Could you rephrase or provide more details — for example, the specific unit name or ID you are looking for?"
+        )
+
     return ChatResponse(answer=answer, conversation_id=conv_id)
 
 

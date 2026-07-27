@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "C:\Users\pradesh.kumar\go\src\github.com\noke-inc\fm-chat\eks\mcp_server\data_retrieval_engine.py", line 569, in <module>
+    print("\n" + "\u2550"*80)
+  File "C:\Users\pradesh.kumar\python\3.11\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 2-81: character maps to <undefined>

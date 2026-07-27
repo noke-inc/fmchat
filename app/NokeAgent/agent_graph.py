@@ -1550,6 +1550,13 @@ def generate_conversational_response(state: AgentState):
         print(f"Blocked response: {clean_narrative_sentence[:200]}", file=sys.stderr)
         print("─"*100 + "\n", file=sys.stderr)
         clean_narrative_sentence = _build_followup_question(user_initial_prompt)
+
+    # Final safety net: _build_followup_question may itself return empty for unusual queries.
+    if not clean_narrative_sentence:
+        clean_narrative_sentence = (
+            "No matching records were found. "
+            "Could you provide more details — such as the exact name, ID, or status you are looking for?"
+        )
     
     # Re-assign the clean plain-text string back onto the LangGraph state message payload block
     conversational_reply.content = clean_narrative_sentence

@@ -1,0 +1,312 @@
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  COMPREHENSIVE QUERY COMPILATION VERIFICATION REPORT
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+Γ£à PASS  U-01  List all units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) LIMIT 50
+
+Γ£à PASS  U-02  Count all units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) LIMIT 50
+
+Γ£à PASS  U-03  Count available units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'available' LIMIT 50
+
+Γ£à PASS  U-04  Count inuse units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' LIMIT 50
+
+Γ£à PASS  U-05  Count overlock units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'overlock' LIMIT 50
+
+Γ£à PASS  U-06  Count checkout units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'checkout' LIMIT 50
+
+Γ£à PASS  U-07  List employee access_type units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.access_type = 'employee' LIMIT 50
+
+Γ£à PASS  U-08  List service units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.access_type = 'service' LIMIT 50
+
+Γ£à PASS  U-09  Search unit by name
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%LA1234%' OR t0.rental_state LIKE '%LA1234%' OR t0.access_typ
+
+Γ£à PASS  U-10  Units per rental_state breakdown
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.rental_state ORDER BY COUNT(*) DESC  |  GROUP BY t0.rental_state ORDER BY COUNT(*) DESC
+
+Γ£à PASS  U-11  Units per access_type
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.access_type ORDER BY COUNT(*) DESC  |  GROUP BY t0.access_type ORDER BY COUNT(*) DESC
+
+Γ£à PASS  U-12  Avg price per access_type
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.access_type ORDER BY COUNT(*) DESC  |  GROUP BY t0.access_type ORDER BY COUNT(*) DESC
+
+Γ£à PASS  P-01  % inuse units  [state must NOT appear in WHERE]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.rental_state ORDER BY COUNT(*) DESC  |  GROUP BY t0.rental_state ORDER BY COUNT(*) DESC
+
+Γ£à PASS  P-02  % available units  [state suppressed]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.rental_state ORDER BY COUNT(*) DESC  |  GROUP BY t0.rental_state ORDER BY COUNT(*) DESC
+
+Γ£à PASS  P-03  % open units   [open suppressed when grouped]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.rental_state ORDER BY COUNT(*) DESC  |  GROUP BY t0.rental_state ORDER BY COUNT(*) DESC
+
+Γ£à PASS  P-04  Count inuse WITH group by access_type [inuse stays in WHERE]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' GROUP BY t0.access_type ORDER BY COUNT(*) DESC  |  GROUP BY t0.access_type ORDER BY COUNT(*) DESC
+
+Γ£à PASS  US-01  List clients
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'client' LIMIT 50
+
+Γ£à PASS  US-02  Count active users
+     SQLΓåÆ  WHERE 1=1 AND t0.state = 'active' LIMIT 50
+
+Γ£à PASS  US-03  Site managers
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'site_manager' LIMIT 50
+
+Γ£à PASS  US-04  Employee users
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'employee' LIMIT 50
+
+Γ£à PASS  US-05  Noke admin users
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'noke_admin' LIMIT 50
+
+Γ£à PASS  US-06  Users by type breakdown
+     SQLΓåÆ  WHERE 1=1 GROUP BY t0.type ORDER BY COUNT(*) DESC  |  GROUP BY t0.type ORDER BY COUNT(*) DESC
+
+Γ£à PASS  US-07  Okta SSO users
+     SQLΓåÆ  WHERE 1=1 AND t0.login_type = 'okta' LIMIT 50
+
+Γ£à PASS  US-08  Search user by name
+     SQLΓåÆ  WHERE 1=1 AND (t0.first_name LIKE '%John%' OR t0.last_name LIKE '%John%' OR t0.email LIKE '%John%' OR t0.phone
+
+Γ£à PASS  L-01  List all locks
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) LIMIT 50
+
+Γ£à PASS  L-02  Offline locks
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'offline' LIMIT 50
+
+Γ£à PASS  L-03  LOCKED state locks
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'LOCKED' LIMIT 50
+
+Γ£à PASS  L-04  OPEN state locks  [lock first ΓåÆ hw_state]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t2.hw_state = 'OPEN' LIMIT 50
+
+Γ£à PASS  L-05  HOLDOPEN locks
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'HOLDOPEN' LIMIT 50
+
+Γ£à PASS  L-06  UGLY fault locks
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'UGLY' LIMIT 50
+
+Γ£à PASS  L-07  Gate type locks
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  L-08  Noke Volt hardware version
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.ble_hw_version = '3E' LIMIT 50
+
+Γ£à PASS  L-09  Noke Pad (3K)
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.ble_hw_version = '3K' LIMIT 50
+
+Γ£à PASS  L-10  Count locks per hw_type
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.hw_type ORDER BY COUNT(*) DESC  |  GROUP BY t0.hw_type ORDER BY COUNT(*) DESC
+
+Γ£à PASS  L-11  Count locks per hw_state
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.hw_state ORDER BY COUNT(*) DESC  |  GROUP BY t0.hw_state ORDER BY COUNT(*) DESC
+
+Γ£à PASS  L-12  Search lock by MAC
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%abc123%' OR t0.mac LIKE '%abc123%' OR t0.shortmac LIKE '%abc
+
+Γ£à PASS  L-13  Locks in setup sync_flag
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.sync_flag = 'setup' LIMIT 50
+
+Γ£à PASS  UU-01  Occupied units with user info
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' LIMIT 50
+
+Γ£à PASS  UU-02  Employee users in occupied units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' AND t1.type = 'employee' LIMIT 50
+
+Γ£à PASS  UU-03  Search unit+user by name
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%LA1234%' OR t0.rental_state LIKE '%LA1234%' OR t0.access_typ
+
+Γ£à PASS  UU-04  Tenants with more than 1 unit
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) GROUP BY t0.user_id HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC  |  GROUP BY t0.user_id HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC
+
+Γ£à PASS  UU-05  Open units  [unit first ΓåÆ rental_state available]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'available' LIMIT 50
+
+Γ£à PASS  UL-01  Battery of a unit (search by name)
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%LA1234%' OR t0.rental_state LIKE '%LA1234%' OR t0.access_typ
+
+Γ£à PASS  UL-02  Locked units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t2.hw_state = 'LOCKED' LIMIT 50
+
+Γ£à PASS  UL-03  Noke Volt on occupied units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' AND t2.ble_hw_version = '3E' LIMIT 50
+
+Γ£à PASS  UL-04  Overlock units with lock state
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'overlock' LIMIT 50
+
+Γ£à PASS  LU-01  Open locks with unit info  [lock first]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t2.hw_state = 'OPEN' LIMIT 50
+
+Γ£à PASS  LU-02  Count open locks  [lock first]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t2.hw_state = 'OPEN' LIMIT 50
+
+Γ£à PASS  LU-03  LOCKED gate locks with unit info
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t2.hw_state = 'LOCKED' AND t2.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  LUU-01  Open locks with user info  [lock first]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t2.hw_state = 'OPEN' LIMIT 50
+
+Γ£à PASS  LUU-02  Offline locks and their occupants
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t2.hw_state = 'offline' LIMIT 50
+
+Γ£à PASS  UUL-01  Occupied unit with user and lock details
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' LIMIT 50
+
+Γ£à PASS  UUL-02  Search unit+user+lock by unit name
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%LA1234%' OR t0.rental_state LIKE '%LA1234%' OR t0.access_typ
+
+Γ£à PASS  GW-01  List all gateways
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) LIMIT 50
+
+Γ£à PASS  GW-02  Count online gateways
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) AND t0.status = 'online' LIMIT 50
+
+Γ£à PASS  GW-03  Count offline gateways
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) AND t0.status = 'offline' LIMIT 50
+
+Γ£à PASS  GW-04  List disconnected gateways
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) AND t0.status = 'offline' LIMIT 50
+
+Γ£à PASS  GW-05  Gateway status breakdown
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) GROUP BY t0.status ORDER BY COUNT(*) DESC  |  GROUP BY t0.status ORDER BY COUNT(*) DESC
+
+Γ£à PASS  GW-06  Search gateway by name
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) AND (t0.uuid LIKE '%MainGate%' OR t0.name LIKE '%
+
+Γ£à PASS  GW-07  Search gateway by MAC
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) AND (t0.uuid LIKE '%AA:BB:CC%' OR t0.name LIKE '%
+
+Γ£à PASS  CO-01  List all companies
+     SQLΓåÆ  WHERE 1=1 LIMIT 50
+
+Γ£à PASS  CO-02  Count companies
+     SQLΓåÆ  WHERE 1=1 LIMIT 50
+
+Γ£à PASS  CO-03  Search company by name
+     SQLΓåÆ  WHERE 1=1 AND (t0.uuid LIKE '%Acme%' OR t0.name LIKE '%Acme%') LIMIT 50
+
+Γ£à PASS  EV-01  List all events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) LIMIT 50
+
+Γ£à PASS  EV-02  Count unlock events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'unlock' LIMIT 50
+
+Γ£à PASS  EV-03  Count lock events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'lock' LIMIT 50
+
+Γ£à PASS  EV-04  List share events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'share' LIMIT 50
+
+Γ£à PASS  EV-05  List user events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'user' LIMIT 50
+
+Γ£à PASS  EV-06  List video events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'video' LIMIT 50
+
+Γ£à PASS  EV-07  List site events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'site' LIMIT 50
+
+Γ£à PASS  EV-08  Count unit access events
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'unit' LIMIT 50
+
+Γ£à PASS  EV-09  Events by type breakdown
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) GROUP BY t0.type_gen ORDER BY COUNT(*) DESC  |  GROUP BY t0.type_gen ORDER BY COUNT(*) DESC
+
+Γ£à PASS  EV-10  Search event by user
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND (t0.id LIKE '%user123%' OR t0.event_obj LIKE '%user123%' OR t0.by_user_g
+
+Γ£à PASS  BAT-01  Battery status of Fake 3A  [lock search]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%Fake 3A%' OR t0.mac LIKE '%Fake 3A%' OR t0.shortmac LIKE '%F
+
+Γ£à PASS  BAT-02  Battery status of 3A hardware  [ble_hw_version]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.ble_hw_version = '3A' LIMIT 50
+
+Γ£à PASS  BAT-03  All locks with battery info  [includes voltage_battery]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) LIMIT 50
+
+Γ£à PASS  BAT-04  Unit battery status  [unit+lock join]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%LA1234%' OR t0.rental_state LIKE '%LA1234%' OR t0.access_typ
+
+Γ£à PASS  TEN-01  Count tenants (site-scoped)  [uses users_roles join]
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'client' LIMIT 50
+
+Γ£à PASS  TEN-02  List tenants (site-scoped)
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'client' LIMIT 50
+
+Γ£à PASS  TEN-03  Count employees (site-scoped)
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'employee' LIMIT 50
+
+Γ£à PASS  TEN-04  Percentage of tenants  [group by type with users_roles]
+     SQLΓåÆ  WHERE 1=1 GROUP BY t0.type ORDER BY COUNT(*) DESC  |  GROUP BY t0.type ORDER BY COUNT(*) DESC
+
+Γ£à PASS  TEN-05  Search user by email (site-scoped)
+     SQLΓåÆ  WHERE 1=1 AND (t0.first_name LIKE '%john@example.com%' OR t0.last_name LIKE '%john@example.com%' OR t0.email L
+
+Γ£à PASS  ENT-01  Count entries (gate type)  [entry ΓåÆ gate]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  ENT-02  List entries (gate+exitgate)  [entries ΓåÆ gate]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  ENT-03  Count exit entries  [exitgate type]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_type = 'exitgate' LIMIT 50
+
+Γ£à PASS  ENT-04  Open entries  [hw_state + hw_type]
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'OPEN' AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  ENT-05  Hold open entries
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'HOLDOPEN' AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  ENT-06  Locked entrance gates
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'LOCKED' AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  REAL-01  Which unit is occupied by user employee2
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' AND t1.type = 'employee' AND (t0.name LIKE '%emplo
+
+Γ£à PASS  REAL-02  Which unit is rented by employee2
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'inuse' AND (t0.name LIKE '%employee2%' OR t0.rental_state
+
+Γ£à PASS  REAL-03  How many people are onsite  [active users]
+     SQLΓåÆ  WHERE 1=1 AND t0.state = 'active' LIMIT 50
+
+Γ£à PASS  REAL-04  How many tenants in onsite  [site-scoped]
+     SQLΓåÆ  WHERE 1=1 AND t0.type = 'client' LIMIT 50
+
+Γ£à PASS  REAL-05  Percentage of tenants  [group by type]
+     SQLΓåÆ  WHERE 1=1 GROUP BY t0.type ORDER BY COUNT(*) DESC  |  GROUP BY t0.type ORDER BY COUNT(*) DESC
+
+Γ£à PASS  REAL-06  Show all available units
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.rental_state = 'available' LIMIT 50
+
+Γ£à PASS  REAL-07  Battery status of Fake 3A
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND (t0.name LIKE '%Fake 3A%' OR t0.mac LIKE '%Fake 3A%' OR t0.shortmac LIKE '%F
+
+Γ£à PASS  REAL-08  How many gateways are online
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) AND t0.status = 'online' LIMIT 50
+
+Γ£à PASS  REAL-09  How many gateways are offline
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.company_id IN (1000241) AND t0.status = 'offline' LIMIT 50
+
+Γ£à PASS  REAL-10  How many entries are open
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'OPEN' AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  REAL-11  How many entries are hold open
+     SQLΓåÆ  WHERE t0.site_id IN (2223391) AND t0.hw_state = 'HOLDOPEN' AND t0.hw_type = 'gate' LIMIT 50
+
+Γ£à PASS  REAL-12  Last activity for unit LA1234  [events]
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND (t0.id LIKE '%LA1234%' OR t0.event_obj LIKE '%LA1234%' OR t0.by_user_gen
+
+Γ£à PASS  REAL-13  Count access events today  [unlock events]
+     SQLΓåÆ  WHERE t0.site_id_gen IN (2223391) AND t0.type_gen = 'unlock' LIMIT 50
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  RESULT: 101 passed  |  0 failed  out of 101 tests
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
