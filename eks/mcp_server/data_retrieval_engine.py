@@ -80,6 +80,15 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
     all_graph_nodes = list(SCHEMA_CATALOG["entities"].keys())
     graph_edges = {node: list(SCHEMA_CATALOG["entities"][node].get("relationships", {}).keys()) for node in all_graph_nodes}
     
+    # Also include junction bridge endpoints so BFS can traverse many-to-many paths
+    # (e.g. user→role via users_roles, unit→zone via v2_zones_to_units).
+    for bridge_key in SCHEMA_CATALOG.get("junction_bridges", {}):
+        parts = bridge_key.split(".")
+        if len(parts) == 2:
+            from_ent, to_ent = parts
+            if from_ent in graph_edges and to_ent not in graph_edges[from_ent]:
+                graph_edges[from_ent].append(to_ent)
+    
     def find_shortest_path(start, end):
         queue = [[start]]
         visited = {start}
@@ -216,6 +225,11 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
                 for col in ["id", "first_name", "last_name", "email", "name"]:
                     if col in child_cols and col not in deny_cols:
                         select_fields.append(f"{assigned_alias}.{col} AS {entity_name}_{col}")
+                # For role entity: also include tier and default_for_site (useful for role queries)
+                if entity_name == "role":
+                    for role_col in ["tier", "default_for_site"]:
+                        if role_col in child_cols and role_col not in deny_cols:
+                            select_fields.append(f"{assigned_alias}.{role_col} AS role_{role_col}")
                 # For lock entity: also include voltage_battery, battery_state (for battery queries)
                 if entity_name == "lock":
                     for bat_col in ["voltage_battery", "voltage_wired", "battery_state"]:
@@ -257,6 +271,10 @@ def run_compiled_mcp_query(subjects: list, intent_type: str, session_context: di
             company_scope_col = entity_meta.get("company_scope_column")
             if company_scope_col and company_scope_col != "company_id":
                 target_column_name = company_scope_col
+            elif "company_uuid" in allowed_cols_dict:
+                # Prefer company_uuid (varchar) over company_id (int) when both exist.
+                # DB stores company_uuid as the string form of the numeric ID ("1000241").
+                target_column_name = "company_uuid"
 
         resolved_column_alias = None
         if target_column_name in allowed_cols_dict:

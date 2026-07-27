@@ -605,7 +605,22 @@ def call_bedrock_orchestrator(state: AgentState):
         "ALWAYS include 'role' entity as first or second subject to enable site scoping: target_subjects: 'role, role_permission', search_keyword: 'move out'. "
         "For listing all permissions ('what permissions do we have', 'show all permissions', 'list permissions'), "
         "use intent_type='DATA_RETRIEVAL' with target_subjects: 'role, role_permission' (NOT DATA_AGGREGATION) so actual permission names are returned, not just a count. "
-        "The word 'available' in permission context (e.g. 'what permissions are available for user X') should NOT trigger 'unit' entity — it refers to permissions assigned to the user's role. "
+        "USER TYPE vs ROLE NAME — CRITICAL DISTINCTION: "
+        "In the database, users have a 'type' column (company_manager, site_manager, employee) with UNDERSCORES. "
+        "Roles have a 'name' column (company manager, site manager, employee) WITHOUT UNDERSCORES. "
+        "These are DIFFERENT columns on DIFFERENT tables. "
+        "RULE: When the user asks 'what roles/permissions does [name] have', [name] is a ROLE NAME stored in roles.name (no underscores). "
+        "Use search_keyword: '[name as-is with spaces]' to match against roles.name. "
+        "Do NOT use semantic_filters for role name lookups. "
+        "EXAMPLES: "
+        "'what permissions does company manager have' → target_subjects: 'user, role, role_permission', search_keyword: 'company manager' (NO underscore, NO semantic_filters); "
+        "'what roles does company manager have' → target_subjects: 'user, role', search_keyword: 'company manager'; "
+        "'what roles does site manager have' → target_subjects: 'user, role', search_keyword: 'site manager'; "
+        "'what role does user John have' → target_subjects: 'user, role', search_keyword: 'John'; "
+        "'how many company_manager users are there' → semantic_filters: ['company_manager'] (underscore = user.type column filter); "
+        "'what roles are available in the site' → target_subjects: 'role' (site scoping is automatic); "
+        "'what permissions are available in the site' → target_subjects: 'role, role_permission' (site scoping is automatic). "
+        "The word 'available' in permission context should NOT trigger 'unit' entity. "
         "Roles are scoped by site_id via users_roles junction table automatically.\n"
         "19. When a question asks about FEATURE FLAGS (enabled features, feature availability, flags for a site): "
         "ALWAYS use intent_type='DATA_RETRIEVAL' (never DATA_AGGREGATION) with target_subjects: 'featureflag'. "
@@ -1563,6 +1578,17 @@ def route_next_node(state: AgentState):
     mutation_intent = state.get("active_mutation_intent")
     has_active_form_open = mutation_intent and mutation_intent != "FORM_COMPLETE"
 
+    # Word-boundary mutation keyword check — prevents "settings"→"set", "creation"→"create" false positives
+    # Also excludes "change log"/"changelog" which is a read entity, not a mutation
+    _MUTATION_WORDS = [r'\bassign\b', r'\bcreate\b', r'\bmodify\b', r'\bupdate\b', r'\bset\b', r'\bchange\b']
+    _MUTATION_EXCLUSIONS = [r'\bchange\s+log\b', r'\bchangelog\b', r'\bchange\s+logs\b']
+    def _is_mutation_text(text: str) -> bool:
+        # First strip known read-entity phrases that contain mutation-like words
+        sanitized = text
+        for excl in _MUTATION_EXCLUSIONS:
+            sanitized = re.sub(excl, '', sanitized)
+        return any(re.search(pat, sanitized) for pat in _MUTATION_WORDS)
+
     flat_text = str(last_message.content).lower().strip()
     has_all_keyword = bool(re.search(r'\ball\b', flat_text))
     has_site_digit = bool(re.findall(r'\b\d+\b', flat_text))
@@ -1636,7 +1662,7 @@ def route_next_node(state: AgentState):
         if is_user_reply or state.get("pending_user_query"):
             # Check if this selection turn relates to a dynamic write/mutation transaction
             p_query = str(state.get("pending_user_query") or "").lower()
-            is_mutation_track = any(w in p_query for w in ["assign", "create", "modify", "update", "set", "change"]) or has_active_form_open
+            is_mutation_track = _is_mutation_text(p_query) or has_active_form_open
             
             if is_mutation_track:
                 print("\n🛠️ ROUTER: Selection response captured for mutation track. Routing to Form Gatekeeper Node.", file=sys.stderr)
@@ -1671,7 +1697,7 @@ def route_next_node(state: AgentState):
     # Step 4.5: Initial turn human prompt routing filters
     # AFTER
     if last_message.type == "human" and not is_user_reply:
-        is_mutation_phrase = any(w in flat_text for w in ["assign", "create", "modify", "update", "set", "change"])
+        is_mutation_phrase = _is_mutation_text(flat_text)
         _active_intent = state.get("active_mutation_intent")
         has_open_form = bool(_active_intent and _active_intent != "FORM_COMPLETE")
         if is_mutation_phrase or has_open_form:
@@ -1684,7 +1710,7 @@ def route_next_node(state: AgentState):
             return "dynamic_mutation_gatekeeper_node"
         # After site selection, check if the original pending query was a mutation intent
         _pq = str(state.get("pending_user_query") or "").lower()
-        if _pq and any(w in _pq for w in ["assign", "create", "modify", "update", "set", "change"]):
+        if _pq and _is_mutation_text(_pq):
             print("\n🛠️ ROUTER: Pending mutation intent detected after site selection. Routing to Form Gatekeeper Node.", file=sys.stderr)
             return "dynamic_mutation_gatekeeper_node"
 

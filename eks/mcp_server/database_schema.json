@@ -284,7 +284,17 @@
         "assigned to",
         "rented by",
         "occupied by",
-        "belongs to"
+        "belongs to",
+        "company manager",
+        "company managers",
+        "site manager",
+        "site managers",
+        "company admin",
+        "facility manager",
+        "noke admin",
+        "technician",
+        "employee",
+        "staff"
       ],
       "allowed_columns": {
         "id": {
@@ -397,10 +407,7 @@
           ],
           "enum_map": {
             "company_manager": [
-              "company_manager",
-              "company manager",
-              "company admin",
-              "corporate manager"
+              "company_manager"
             ],
             "client": [
               "client",
@@ -410,19 +417,13 @@
               "lessee"
             ],
             "site_manager": [
-              "site_manager",
-              "site manager",
-              "site admin",
-              "facility manager"
+              "site_manager"
             ],
             "noke_admin": [
-              "noke_admin",
-              "noke admin",
-              "admin",
-              "noke administrator",
-              "superadmin"
+              "noke_admin"
             ],
             "inactive": [
+              "inactive",
               "inactive user",
               "deactivated user"
             ],
